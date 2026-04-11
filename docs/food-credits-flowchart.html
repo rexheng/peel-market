@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peel — Food Credits, explained in one picture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..800,0..100&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  /* Peel palette — OKLCH, lifted from index.html */
+  --paper:       oklch(98.5% 0.018 108);
+  --paper-2:     oklch(95.5% 0.035 115);
+  --paper-3:     oklch(92%   0.05  118);
+  --lime:        oklch(90%   0.17  125);
+  --lime-hot:    oklch(82%   0.22  128);
+  --lime-deep:   oklch(52%   0.20  138);
+  --forest:      oklch(20%   0.05  148);
+  --forest-2:    oklch(32%   0.06  148);
+  --forest-3:    oklch(48%   0.05  150);
+  --coral:       oklch(77%   0.13  42);
+  --coral-deep:  oklch(58%   0.16  34);
+  --line:        oklch(88%   0.03  120);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font-optical-sizing: auto;
+  font-size: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+  line-height: 1.6;
+  color: var(--forest);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  padding: clamp(1.5rem, 4vw, 4rem) clamp(1rem, 3vw, 2.5rem);
+}
+
+.wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+header {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: clamp(1.5rem, 3vw, 2.5rem);
+  margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+.eyebrow {
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--lime-deep);
+  background: var(--paper-2);
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  margin-bottom: 1rem;
+}
+
+h1 {
+  font-family: "Fraunces", serif;
+  font-optical-sizing: auto;
+  font-variation-settings: "SOFT" 50, "opsz" 96;
+  font-weight: 500;
+  font-size: clamp(2rem, 1.5rem + 2.5vw, 3.4rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--forest);
+  margin-bottom: 0.75rem;
+}
+
+h2 {
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 50, "opsz" 48;
+  font-weight: 500;
+  font-size: clamp(1.4rem, 1.2rem + 0.8vw, 2rem);
+  letter-spacing: -0.015em;
+  margin-top: clamp(2.5rem, 5vw, 4rem);
+  margin-bottom: 1rem;
+  color: var(--forest);
+}
+
+.lede {
+  font-size: clamp(1.05rem, 0.98rem + 0.35vw, 1.25rem);
+  color: var(--forest-2);
+  max-width: 68ch;
+}
+
+p {
+  max-width: 72ch;
+  margin-bottom: 1rem;
+  color: var(--forest-2);
+}
+
+strong { color: var(--forest); font-weight: 600; }
+em { font-style: italic; }
+
+.diagram {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: clamp(1rem, 2.5vw, 2rem);
+  margin-top: 1rem;
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+}
+
+.diagram .mermaid {
+  display: flex;
+  justify-content: center;
+  min-width: 100%;
+}
+
+ul.why {
+  list-style: none;
+  margin: 1rem 0 1.5rem;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+ul.why li {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--lime-deep);
+  padding: 0.9rem 1.1rem;
+  border-radius: 10px;
+  max-width: 72ch;
+  color: var(--forest-2);
+}
+
+ul.why li strong { display: block; color: var(--forest); margin-bottom: 0.15rem; }
+
+a {
+  color: var(--lime-deep);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  transition: color 0.2s;
+}
+a:hover { color: var(--forest); }
+
+.mono {
+  font-family: "DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  background: var(--paper-3);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  color: var(--forest);
+}
+
+footer {
+  margin-top: clamp(3rem, 6vw, 5rem);
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.88rem;
+  color: var(--forest-3);
+  max-width: 72ch;
+}
+
+footer .brand {
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 50, "opsz" 32;
+  font-weight: 600;
+  color: var(--forest);
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">Peel · Food Credits</span>
+  <h1>Honest food-waste accounting, explained in one picture.</h1>
+  <p class="lede">Three restaurants log what they buy and what they sell. They do their own math on what got wasted. A regulator reads the public record and rewards the best performers with digital Food Credits. Nobody has to trust anybody — every step is on a public ledger anyone can audit.</p>
+</header>
+
+<h2>The full cycle</h2>
+<p>Read it top to bottom. Every arrow that points into the green lane in the middle is something anyone in the world can look up and verify.</p>
+<div class="diagram">
+<div class="mermaid">
+flowchart TD
+    subgraph INGEST["1 INGEST — deliveries come in"]
+        KA1[Kitchen A<br/>receives rice, oil]
+        KB1[Kitchen B<br/>receives pasta, flour, oil]
+        KC1[Kitchen C<br/>receives flour, oil]
+    end
+
+    LEDGER[("PUBLIC LEDGER<br/>shared record<br/>everyone can read<br/><i>PROGRAMME_TOPIC on Hedera</i>")]
+
+    KA1 -->|"posts invoice record"| LEDGER
+    KB1 -->|"posts invoice record"| LEDGER
+    KC1 -->|"posts invoice record"| LEDGER
+
+    subgraph CLOSE["2 CLOSE — each kitchen does its own honest math"]
+        direction TB
+        KA2[Kitchen A<br/>25 kg bought<br/>22.7 kg implied by sales<br/>→ 9.2% waste]
+        KB2[Kitchen B<br/>31 kg bought<br/>27.0 kg implied by sales<br/>→ 12.9% waste]
+        KC2[Kitchen C<br/>35 kg bought<br/>22.6 kg implied by sales<br/>→ 35.4% waste]
+    end
+
+    LEDGER -.->|"invoices visible"| CLOSE
+
+    KA2 -->|"posts period close"| LEDGER
+    KB2 -->|"posts period close"| LEDGER
+    KC2 -->|"posts period close"| LEDGER
+
+    subgraph RANK["3 RANK — the Regulator reads and sorts"]
+        REG[Regulator Agent<br/>reads all period closes<br/>from the public ledger<br/>ranks by waste rate<br/>cuts off at top quartile]
+    end
+
+    LEDGER -->|"pulls every kitchen's<br/>published close"| REG
+
+    subgraph REWARD["4 REWARD — winners get Food Credits"]
+        MINT[Mint Food Credits<br/>to regulator treasury<br/><i>REDUCTION_CREDIT token</i>]
+        XFER[Transfer credits<br/>to each winning kitchen<br/>proportional to how far<br/>below the cutoff]
+    end
+
+    REG -->|"winners decided"| MINT
+    MINT --> XFER
+    XFER -->|"Kitchen A receives credits"| KA3[Kitchen A wallet]
+
+    subgraph PUBLISH["5 PUBLISH — ranking goes back on the ledger"]
+        RES[Regulator publishes<br/>final ranking result<br/>so anyone can audit it]
+    end
+
+    XFER --> RES
+    RES -->|"posts ranking"| LEDGER
+</div>
+</div>
+
+<h2>The same story, in time order</h2>
+<p>If you prefer a chronological view — who sent what to whom, in what order — here is the exact same flow laid out as a sequence of messages.</p>
+<div class="diagram">
+<div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant A as Kitchen A
+    participant B as Kitchen B
+    participant C as Kitchen C
+    participant L as Public Ledger
+    participant R as Regulator
+
+    Note over A,C: INGEST — deliveries arrive over the period
+    A->>L: invoice record (rice 22kg, oil 3kg)
+    B->>L: invoice record (pasta 25kg, flour 3kg, oil 3kg)
+    C->>L: invoice record (flour 30kg, oil 5kg)
+
+    Note over A,C: CLOSE — each kitchen back-calculates from its POS sales
+    A->>A: 25 kg bought vs 22.7 kg used → 9.2% waste
+    B->>B: 31 kg bought vs 27.0 kg used → 12.9% waste
+    C->>C: 35 kg bought vs 22.6 kg used → 35.4% waste
+    A->>L: period close (9.2%)
+    B->>L: period close (12.9%)
+    C->>L: period close (35.4%)
+
+    Note over R: RANK — regulator reads the public record
+    L-->>R: all three period closes
+    R->>R: sort, cut off at top quartile → A wins
+
+    Note over R: REWARD — mint and transfer Food Credits
+    R->>L: mint REDUCTION_CREDIT to treasury
+    R->>A: transfer Food Credits to winner
+
+    Note over R: PUBLISH — ranking goes back on-ledger
+    R->>L: ranking result (cutoff + winners)
+</div>
+</div>
+
+<h2>Why this is interesting</h2>
+<p>The whole point of running this on a public ledger is that <strong>nobody has to trust anybody</strong>. Today, restaurants self-report their food waste and nobody can check the numbers. With Peel:</p>
+
+<ul class="why">
+  <li><strong>Kitchens can't lie about what they bought.</strong> Invoice records are posted to the public ledger, timestamped, and can't be edited after the fact.</li>
+  <li><strong>Kitchens can't lie about what they sold.</strong> Their sales imply their consumption via a public recipe book — the arithmetic is open.</li>
+  <li><strong>The regulator can't play favourites.</strong> The ranking rule is public, the inputs are public, and anyone can re-run the math and get the same answer.</li>
+  <li><strong>The reward is real.</strong> Food Credits (<span class="mono">REDUCTION_CREDIT</span>) are a live digital token on the Hedera network, transferred to the winners' wallets in a transaction anyone can look up.</li>
+</ul>
+
+<p>Every step in the diagrams above produces a receipt you can click on in <a href="https://hashscan.io/testnet">HashScan</a>. No central database, no private spreadsheet, no "trust us".</p>
+
+<footer>
+  <p><span class="brand">Peel</span> — honest accounting for every kitchen. Built on Hedera for the Agentic Society Hackathon. The diagrams on this page are rendered with <a href="https://mermaid.js.org/">Mermaid</a>; the source lives in <span class="mono">docs/food-credits-flowchart.md</span> alongside this file.</p>
+</footer>
+
+</div>
+
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+mermaid.initialize({
+  startOnLoad: true,
+  theme: "base",
+  fontFamily: '"DM Sans", ui-sans-serif, system-ui, sans-serif',
+  themeVariables: {
+    // Map Peel OKLCH palette (converted to hex approximations for Mermaid's SVG renderer,
+    // which does not reliably accept oklch() in all browsers yet).
+    background:       "#fbfaf1",
+    primaryColor:     "#eaf5c8",
+    primaryTextColor: "#152619",
+    primaryBorderColor: "#3f5c36",
+    secondaryColor:   "#f5f1dc",
+    tertiaryColor:    "#ecead1",
+    lineColor:        "#3f5c36",
+    textColor:        "#152619",
+    mainBkg:          "#eaf5c8",
+    nodeBorder:       "#3f5c36",
+    clusterBkg:       "#f5f1dc",
+    clusterBorder:    "#c7c2a8",
+    edgeLabelBackground: "#fbfaf1",
+    // Sequence diagram specifics
+    actorBkg:         "#eaf5c8",
+    actorBorder:      "#3f5c36",
+    actorTextColor:   "#152619",
+    actorLineColor:   "#3f5c36",
+    signalColor:      "#152619",
+    signalTextColor:  "#152619",
+    labelBoxBkgColor: "#f5f1dc",
+    labelBoxBorderColor: "#c7c2a8",
+    labelTextColor:   "#152619",
+    noteBkgColor:     "#f5eadc",
+    noteBorderColor:  "#c88f6a",
+    noteTextColor:    "#152619",
+    sequenceNumberColor: "#fbfaf1",
+    activationBkgColor: "#eaf5c8",
+    activationBorderColor: "#3f5c36",
+  },
+  flowchart: { curve: "basis", padding: 16, nodeSpacing: 40, rankSpacing: 60 },
+  sequence: { actorMargin: 55, boxMargin: 12, messageMargin: 40, mirrorActors: false },
+});
+</script>
+</body>
+</html>
