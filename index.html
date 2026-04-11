@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Peel — Honest accounting for every kitchen. Tokenised food waste reporting on Hedera.">
+<title>Peel — Honest accounting for every kitchen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..800,0..100;1,9..144,300..800,0..100&display=swap" rel="stylesheet">
+
+<style>
+/* ====================================================================
+   DESIGN TOKENS
+   ==================================================================== */
+:root {
+  /* Palette — OKLCH, warm pastel lime on cream */
+  --paper:       oklch(98.5% 0.018 108);
+  --paper-2:     oklch(95.5% 0.035 115);
+  --paper-3:     oklch(92%   0.05  118);
+
+  --lime:        oklch(90%   0.17  125);
+  --lime-hot:    oklch(82%   0.22  128);
+  --lime-deep:   oklch(52%   0.20  138);
+
+  --forest:      oklch(20%   0.05  148);
+  --forest-2:    oklch(32%   0.06  148);
+  --forest-3:    oklch(48%   0.05  150);
+
+  --coral:       oklch(77%   0.13  42);
+  --coral-deep:  oklch(58%   0.16  34);
+
+  --line:        oklch(88%   0.03  120);
+
+  /* Type scale — fluid */
+  --step--2: clamp(0.72rem, 0.69rem + 0.12vw, 0.78rem);
+  --step--1: clamp(0.84rem, 0.80rem + 0.18vw, 0.94rem);
+  --step-0:  clamp(1rem,    0.95rem + 0.25vw, 1.125rem);
+  --step-1:  clamp(1.2rem,  1.1rem  + 0.5vw,  1.5rem);
+  --step-2:  clamp(1.6rem,  1.35rem + 1.2vw,  2.4rem);
+  --step-3:  clamp(2.2rem,  1.7rem  + 2.5vw,  3.8rem);
+  --step-4:  clamp(3rem,    2.1rem  + 4.5vw,  5.75rem);
+  --step-5:  clamp(4.2rem,  2.6rem  + 7vw,    8.5rem);
+
+  /* Space */
+  --space-xs:  clamp(0.5rem,  0.45rem + 0.25vw, 0.75rem);
+  --space-s:   clamp(0.75rem, 0.65rem + 0.5vw,  1.125rem);
+  --space-m:   clamp(1.25rem, 1rem    + 1.2vw,  2rem);
+  --space-l:   clamp(2rem,    1.5rem  + 2.5vw,  3.5rem);
+  --space-xl:  clamp(3.5rem,  2.25rem + 6vw,    7rem);
+  --space-2xl: clamp(5rem,    3rem    + 10vw,  11rem);
+
+  /* Shape */
+  --r-s: 10px;
+  --r-m: 18px;
+  --r-l: 28px;
+  --r-pill: 999px;
+
+  /* Motion */
+  --ease-out-expo:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* ====================================================================
+   RESET
+   ==================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font-optical-sizing: auto;
+  font-size: var(--step-0);
+  line-height: 1.55;
+  color: var(--forest);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+img, svg { display: block; max-width: 100%; }
+a { color: inherit; text-decoration: none; }
+button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+ul { list-style: none; }
+
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+/* ====================================================================
+   LAYOUT
+   ==================================================================== */
+.wrap {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding-inline: clamp(1.25rem, 3vw, 3rem);
+}
+
+/* ====================================================================
+   NAV
+   ==================================================================== */
+.nav {
+  position: sticky; top: 0; z-index: 50;
+  background: color-mix(in oklch, var(--paper) 84%, transparent);
+  backdrop-filter: saturate(1.1) blur(10px);
+  -webkit-backdrop-filter: saturate(1.1) blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.nav__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 0.9rem;
+}
+.brand {
+  display: inline-flex; align-items: center; gap: 0.6rem;
+  font-family: "Fraunces", serif;
+  font-optical-sizing: auto;
+  font-variation-settings: "SOFT" 50, "opsz" 32;
+  font-weight: 600;
+  font-size: 1.55rem;
+  letter-spacing: -0.02em;
+  color: var(--forest);
+}
+.brand__mark {
+  width: 34px; height: 34px;
+  display: inline-block;
+  position: relative;
+}
+.nav__links {
+  display: flex; align-items: center; gap: var(--space-m);
+  font-size: var(--step--1);
+  color: var(--forest-2);
+}
+.nav__links a { transition: color .2s; }
+.nav__links a:hover { color: var(--forest); }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  padding: 0.72rem 1.15rem;
+  border-radius: var(--r-pill);
+  font-weight: 600;
+  font-size: var(--step--1);
+  transition: transform .3s var(--ease-out-expo), background .25s, color .25s, box-shadow .25s;
+  white-space: nowrap;
+}
+.btn--primary {
+  background: var(--lime);
+  color: var(--forest);
+  box-shadow: inset 0 0 0 1.5px oklch(28% 0.09 148 / 0.08);
+}
+.btn--primary:hover { background: var(--lime-hot); transform: translateY(-1px); }
+.btn--ghost {
+  color: var(--forest);
+  box-shadow: inset 0 0 0 1.5px var(--forest);
+}
+.btn--ghost:hover { background: var(--forest); color: var(--paper); }
+.btn--lg { padding: 1rem 1.55rem; font-size: var(--step-0); }
+
+@media (max-width: 820px) {
+  .nav__links a:not(.btn) { display: none; }
+}
+
+/* ====================================================================
+   HERO
+   ==================================================================== */
+.hero {
+  position: relative;
+  padding-top: clamp(2.5rem, 4vw, 5rem);
+  padding-bottom: var(--space-2xl);
+  overflow: hidden;
+}
+.hero__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.9fr);
+  gap: var(--space-l);
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .hero__grid { grid-template-columns: 1fr; }
+}
+.hero__kicker {
+  display: inline-flex; align-items: center; gap: 0.65rem;
+  padding: 0.5rem 1rem 0.5rem 0.55rem;
+  background: var(--paper-3);
+  border-radius: var(--r-pill);
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--forest-2);
+  transform: rotate(-2deg);
+  margin-bottom: var(--space-m);
+}
+.hero__kicker__dot {
+  width: 0.7rem; height: 0.7rem; border-radius: 50%;
+  background: var(--lime-deep);
+  box-shadow: 0 0 0 4px var(--lime);
+}
+
+.hero h1 {
+  font-family: "Fraunces", serif;
+  font-optical-sizing: auto;
+  font-variation-settings: "SOFT" 50, "opsz" 144, "wght" 500;
+  font-size: var(--step-4);
+  line-height: 0.96;
+  letter-spacing: -0.035em;
+  color: var(--forest);
+  max-width: 14ch;
+  margin-bottom: var(--space-m);
+}
+.hero h1 em {
+  font-style: italic;
+  font-variation-settings: "SOFT" 100, "opsz" 144, "wght" 400;
+  color: var(--forest-2);
+  display: inline-block;
+  position: relative;
+  isolation: isolate;
+}
+.hero h1 em::after {
+  content: "";
+  position: absolute;
+  left: 1%; right: -3%;
+  bottom: 0.08em; height: 0.32em;
+  background: var(--lime);
+  z-index: -1;
+  border-radius: 4px 6px 3px 5px;
+  transform: rotate(-0.6deg);
+}
+
+.hero__lede {
+  max-width: 46ch;
+  font-size: var(--step-1);
+  line-height: 1.48;
+  color: var(--forest-2);
+  margin-bottom: var(--space-l);
+}
+.hero__cta {
+  display: flex; gap: 0.75rem; flex-wrap: wrap;
+  margin-bottom: var(--space-l);
+}
+.hero__meta {
+  display: flex; align-items: center; gap: 0.8rem;
+  font-size: var(--step--1);
+  color: var(--forest-3);
+}
+.hero__meta::before {
+  content: ""; width: 30px; height: 1.5px;
+  background: var(--forest-3);
+}
+
+.hero__visual {
+  position: relative;
+  min-height: clamp(380px, 50vw, 560px);
+}
+.hero__blob {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+}
+.blob-svg {
+  width: min(540px, 100%);
+  height: auto;
+  filter: drop-shadow(0 40px 60px oklch(50% 0.15 135 / 0.18));
+}
+.hero__peek {
+  position: absolute;
+  right: 2%; bottom: 6%;
+  width: clamp(240px, 30vw, 320px);
+  background: var(--paper);
+  border-radius: var(--r-m);
+  padding: 1rem 1.15rem;
+  box-shadow:
+    0 1px 2px oklch(20% 0.05 140 / 0.08),
+    0 24px 48px oklch(20% 0.05 140 / 0.14);
+  border: 1px solid var(--line);
+  transform: rotate(3.8deg);
+  font-size: var(--step--1);
+}
+.hero__peek__head {
+  display: flex; justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.3rem;
+  border-bottom: 1.5px solid var(--forest);
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 40, "opsz" 60, "wght" 600;
+  font-size: 1rem;
+}
+.hero__peek__head small {
+  font-family: "DM Sans", sans-serif;
+  color: var(--forest-3);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+.hero__peek__row {
+  display: flex; justify-content: space-between;
+  padding: 0.35rem 0;
+  font-size: 0.82rem;
+}
+.hero__peek__row + .hero__peek__row { border-top: 1px dashed var(--line); }
+.hero__peek__row b { font-weight: 600; color: var(--forest); }
+.hero__peek__row span { color: var(--forest-3); }
+
+/* ====================================================================
+   STAT STRIP
+   ==================================================================== */
+.stat {
+  background: var(--forest);
+  color: var(--paper);
+  padding-block: var(--space-xl);
+  position: relative;
+  overflow: hidden;
+}
+.stat::before {
+  /* decorative corner mark */
+  content: "";
+  position: absolute;
+  top: -4px; left: 6%;
+  width: 70px; height: 70px;
+  background: var(--lime);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.stat__grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  gap: var(--space-l);
+}
+.stat__big {
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 20, "opsz" 144, "wght" 500;
+  font-size: var(--step-5);
+  line-height: 0.88;
+  letter-spacing: -0.045em;
+  color: var(--lime);
+}
+.stat__copy {
+  max-width: 38ch;
+  font-size: var(--step-1);
+  line-height: 1.4;
+  color: oklch(88% 0.03 125);
+  padding-bottom: 1.4rem;
+}
+.stat__copy cite {
+  display: block;
+  margin-top: 0.9rem;
+  font-size: var(--step--1);
+  font-style: normal;
+  color: oklch(72% 0.04 130);
+}
+@media (max-width: 760px) {
+  .stat__grid { grid-template-columns: 1fr; }
+}
+
+/* ====================================================================
+   HOW IT WORKS
+   ==================================================================== */
+.how { padding-block: var(--space-2xl); }
+.how__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr);
+  gap: var(--space-l);
+  margin-bottom: var(--space-xl);
+  align-items: end;
+}
+@media (max-width: 860px) { .how__head { grid-template-columns: 1fr; } }
+
+.section-eyebrow {
+  display: inline-flex; align-items: center; gap: 0.6rem;
+  font-size: var(--step--1);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--forest-2);
+  margin-bottom: var(--space-s);
+}
+.section-eyebrow::before {
+  content: ""; width: 18px; height: 1.5px; background: var(--forest);
+}
+.section-title {
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 40, "opsz" 144, "wght" 500;
+  font-size: var(--step-3);
+  line-height: 0.98;
+  letter-spacing: -0.025em;
+  max-width: 18ch;
+}
+.section-title em {
+  font-style: italic;
+  font-variation-settings: "SOFT" 100, "opsz" 144, "wght" 400;
+  color: var(--lime-deep);
+}
+.how__head__aside {
+  max-width: 42ch;
+  color: var(--forest-2);
+  font-size: var(--step-0);
+}
+
+.stations {
+  display: grid;
+  grid-template-columns: 1.25fr 0.9fr 1.05fr;
+  gap: clamp(1rem, 1.5vw, 1.75rem);
+}
+@media (max-width: 960px) { .stations { grid-template-columns: 1fr; } }
+
+.station {
+  border-radius: var(--r-l);
+  padding: var(--space-m);
+  position: relative;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+.station--1 { background: var(--paper-3); padding-bottom: var(--space-l); }
+.station--2 {
+  background: var(--paper);
+  border: 1.5px solid var(--forest);
+  margin-top: 2.5rem;
+}
+.station--3 {
+  background: oklch(90% 0.065 42);
+  margin-top: 1.2rem;
+}
+@media (max-width: 960px) {
+  .station, .station--2, .station--3 { margin-top: 0; }
+}
+
+.station__num {
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 80, "opsz" 144, "wght" 400;
+  font-style: italic;
+  font-size: clamp(3rem, 4vw, 5rem);
+  line-height: 1;
+  color: var(--forest);
+  margin-bottom: var(--space-m);
+  opacity: 0.92;
+}
+.station h3 {
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 30, "opsz" 60, "wght" 600;
+  font-size: var(--step-2);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.7rem;
+  max-width: 15ch;
+}
+.station p {
+  color: var(--forest-2);
+  font-size: var(--step-0);
+  line-height: 1.5;
+  max-width: 34ch;
+}
+.station__token {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  margin-top: auto;
+  padding-top: var(--space-m);
+}
+.station__token__pill {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--r-pill);
+  background: var(--paper);
+  font-size: var(--step--2);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--forest-2);
+}
+.station--2 .station__token__pill { background: var(--paper-2); }
+.station--3 .station__token__pill { background: oklch(94% 0.04 42); }
+.station__token__pill b { font-weight: 700; color: var(--lime-deep); }
+.station--3 .station__token__pill b { color: var(--coral-deep); }
+
+/* ====================================================================
+   DASHBOARD / RECEIPT
+   ==================================================================== */
+.dash {
+  background: var(--paper-2);
+  padding-block: var(--space-2xl);
+  position: relative;
+  overflow: hidden;
+}
+.dash__inner {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: var(--space-xl);
+  align-items: center;
+}
+@media (max-width: 960px) { .dash__inner { grid-template-columns: 1fr; } }
+
+.dash__text h2 {
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 50, "opsz" 144, "wght" 500;
+  font-size: var(--step-3);
+  line-height: 0.98;
+  letter-spacing: -0.025em;
+  margin-bottom: var(--space-m);
+  max-width: 16ch;
+}
+.dash__text h2 em {
+  font-style: italic;
+  font-variation-settings: "SOFT" 100, "opsz" 144, "wght" 400;
+  color: var(--lime-deep);
+}
+.dash__text p {
+  max-width: 40ch;
+  color: var(--forest-2);
+  font-size: var(--step-1);
+  line-height: 1.45;
+}
+.dash__text ul {
+  margin-top: var(--space-m);
+  display: flex; flex-direction: column; gap: 0.7rem;
+}
+.dash__text li {
+  display: flex; gap: 0.7rem;
+  font-size: var(--step--1);
+  color: var(--forest-2);
+}
+.dash__text li::before {
+  content: ""; flex-shrink: 0; margin-top: 0.55rem;
+  width: 0.55rem; height: 0.55rem; border-radius: 50%;
+  background: var(--lime-deep);
+}
+
+.receipt {
+  position: relative;
+  background: var(--paper);
+  border-radius: var(--r-m);
+  padding: clamp(1.5rem, 2vw, 2.25rem);
+  box-shadow:
+    0 1px 2px oklch(20% 0.05 140 / 0.08),
+    0 44px 90px -14px oklch(20% 0.05 140 / 0.2);
+  transform: rotate(-1.3deg);
+  max-width: 580px;
+  margin-left: auto;
+  border: 1px solid var(--line);
+}
+.receipt::before {
+  content: "";
+  position: absolute; left: 0; right: 0; top: 0;
+  height: 10px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--paper-3) 0 14px,
+    transparent 14px 28px
+  );
+  border-radius: var(--r-m) var(--r-m) 0 0;
+}
+.receipt__head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding-top: 0.8rem;
+  padding-bottom: 1rem;
+  margin-bottom: 0.9rem;
+  border-bottom: 2px solid var(--forest);
+  gap: 1rem;
+}
+.receipt__title {
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 40, "opsz" 60, "wght" 600;
+  font-size: var(--step-1);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.receipt__title small {
+  display: block;
+  font-family: "DM Sans", sans-serif;
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--forest-3);
+  margin-top: 0.22rem;
+  letter-spacing: 0.02em;
+}
+.receipt__hcs {
+  font-size: 0.68rem;
+  color: var(--forest-3);
+  text-align: right;
+  letter-spacing: 0.05em;
+  line-height: 1.4;
+}
+.receipt__hcs b { color: var(--forest); font-weight: 600; }
+
+.receipt__stamp {
+  position: absolute;
+  top: 1.3rem; right: -0.9rem;
+  background: var(--paper);
+  border: 1.5px dashed var(--coral-deep);
+  border-radius: 4px;
+  padding: 0.4rem 0.7rem;
+  transform: rotate(6deg);
+  color: var(--coral-deep);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-align: center;
+  text-transform: uppercase;
+  line-height: 1.2;
+  box-shadow: 0 2px 0 oklch(58% 0.16 34 / 0.15);
+}
+.receipt__stamp small {
+  display: block;
+  font-size: 0.56rem;
+  color: var(--forest-3);
+  letter-spacing: 0.06em;
+  font-weight: 500;
+  margin-top: 0.18rem;
+}
+
+.receipt__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 0.8rem;
+  padding: 0.6rem 0;
+  font-size: var(--step--1);
+}
+.receipt__row + .receipt__row { border-top: 1px dashed var(--line); }
+.receipt__label { color: var(--forest-2); font-weight: 600; }
+.receipt__tag {
+  justify-self: start;
+  font-size: 0.58rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 3px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+  background: var(--paper-2);
+  color: var(--forest-3);
+  font-family: "DM Sans", sans-serif;
+}
+.receipt__tag--mint { background: oklch(94% 0.08 125); color: var(--lime-deep); }
+.receipt__tag--burn { background: var(--paper-3); color: var(--forest-2); }
+.receipt__tag--divert { background: oklch(94% 0.04 42); color: var(--coral-deep); }
+.receipt__tag--derived { background: var(--forest); color: var(--lime); }
+.receipt__val { text-align: right; font-weight: 600; color: var(--forest); }
+
+.receipt__sep {
+  height: 0;
+  border-top: 2px solid var(--forest);
+  margin: 0.9rem 0 0.6rem;
+}
+.receipt__compare {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.6rem;
+  padding: 0.38rem 0;
+  font-size: var(--step--1);
+  color: var(--forest-2);
+}
+.receipt__compare b { color: var(--forest); font-weight: 600; }
+
+.receipt__credit {
+  margin-top: 1.1rem;
+  padding: 1.15rem 1.25rem;
+  background: var(--lime);
+  border-radius: var(--r-m);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: inset 0 0 0 1.5px oklch(28% 0.09 148 / 0.1);
+}
+.receipt__credit__label {
+  font-size: var(--step--2);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  color: var(--forest-2);
+  max-width: 16ch;
+}
+.receipt__credit__val {
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 30, "opsz" 144, "wght" 500;
+  font-size: clamp(2.2rem, 3vw, 3rem);
+  line-height: 1;
+  letter-spacing: -0.025em;
+  color: var(--forest);
+}
+.receipt__credit__val span {
+  font-size: 0.38em; margin-left: 0.25em; color: var(--forest-2);
+  letter-spacing: 0.1em;
+  font-family: "DM Sans", sans-serif;
+  font-weight: 700;
+}
+.receipt__footer {
+  margin-top: 1rem;
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.7rem;
+  color: var(--forest-3);
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.receipt__footer a {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  color: var(--forest-2);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+/* ====================================================================
+   INCENTIVE
+   ==================================================================== */
+.incent { padding-block: var(--space-2xl); }
+.incent__head {
+  margin-bottom: var(--space-xl);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.7fr);
+  gap: var(--space-l);
+  align-items: end;
+}
+@media (max-width: 860px) { .incent__head { grid-template-columns: 1fr; } }
+.incent__head p {
+  max-width: 42ch;
+  color: var(--forest-2);
+  font-size: var(--step-0);
+}
+
+.incent__grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap: clamp(1rem, 1.5vw, 1.75rem);
+}
+.tile {
+  border-radius: var(--r-l);
+  padding: var(--space-m);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 240px;
+}
+.tile--a {
+  grid-row: span 2;
+  background: var(--lime);
+  color: var(--forest);
+  padding: var(--space-l);
+  min-height: 440px;
+}
+.tile--b { background: var(--forest); color: var(--paper); grid-column: 2 / 3; }
+.tile--c { background: var(--paper-3); color: var(--forest); grid-column: 3 / 4; }
+.tile--d {
+  background: oklch(90% 0.065 42);
+  color: var(--forest);
+  grid-column: 2 / 4;
+}
+
+.tile__tag {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 0.38rem 0.8rem;
+  border-radius: var(--r-pill);
+  background: oklch(30% 0.08 145 / 0.09);
+  font-size: var(--step--2);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-m);
+}
+.tile--b .tile__tag { background: oklch(92% 0.15 125 / 0.15); color: var(--lime); }
+.tile--d .tile__tag { background: oklch(60% 0.15 34 / 0.15); color: var(--coral-deep); }
+
+.tile h3 {
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 40, "opsz" 144, "wght" 500;
+  letter-spacing: -0.025em;
+  line-height: 1.02;
+  margin-bottom: var(--space-s);
+}
+.tile--a h3 { font-size: var(--step-3); max-width: 11ch; }
+.tile--b h3, .tile--c h3, .tile--d h3 { font-size: var(--step-2); max-width: 14ch; }
+.tile--a h3 em, .tile--b h3 em, .tile--c h3 em, .tile--d h3 em {
+  font-style: italic;
+  font-variation-settings: "SOFT" 100, "opsz" 144, "wght" 400;
+}
+.tile--b h3 em { color: var(--lime); }
+.tile p {
+  font-size: var(--step-0);
+  line-height: 1.5;
+  opacity: 0.94;
+  max-width: 38ch;
+}
+.tile--b p { color: oklch(85% 0.03 125); }
+.tile__big {
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 20, "opsz" 144, "wght" 400;
+  font-style: italic;
+  font-size: clamp(5rem, 8vw, 9rem);
+  line-height: 0.85;
+  letter-spacing: -0.04em;
+  color: var(--forest);
+  opacity: 0.16;
+  position: absolute;
+  right: 0.14em;
+  bottom: -0.1em;
+  pointer-events: none;
+}
+.tile__foot {
+  margin-top: auto;
+  padding-top: var(--space-m);
+  font-size: var(--step--2);
+  font-weight: 600;
+  color: var(--forest-2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.tile--b .tile__foot { color: oklch(72% 0.04 130); }
+.tile__foot::after {
+  content: "→";
+  font-family: "DM Sans", sans-serif;
+  text-transform: none;
+  font-size: 1.1em;
+}
+
+@media (max-width: 960px) {
+  .incent__grid { grid-template-columns: 1fr 1fr; }
+  .tile--a { grid-row: auto; grid-column: 1 / -1; min-height: 360px; }
+  .tile--b { grid-column: 1 / 2; }
+  .tile--c { grid-column: 2 / 3; }
+  .tile--d { grid-column: 1 / -1; }
+}
+@media (max-width: 640px) {
+  .incent__grid { grid-template-columns: 1fr; }
+  .tile--a, .tile--b, .tile--c, .tile--d { grid-column: 1 / -1; }
+}
+
+/* ====================================================================
+   FOOTER CTA
+   ==================================================================== */
+.foot {
+  background: var(--forest);
+  color: var(--paper);
+  padding-block: var(--space-xl);
+}
+.foot__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: var(--space-l);
+  align-items: start;
+}
+@media (max-width: 820px) { .foot__grid { grid-template-columns: 1fr; } }
+
+.foot h2 {
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 50, "opsz" 144, "wght" 500;
+  font-size: var(--step-3);
+  line-height: 0.98;
+  letter-spacing: -0.025em;
+  max-width: 16ch;
+  margin-bottom: var(--space-m);
+}
+.foot h2 em {
+  font-style: italic;
+  color: var(--lime);
+  font-variation-settings: "SOFT" 100, "opsz" 144, "wght" 400;
+}
+.foot__cta {
+  display: flex; gap: 0.65rem; flex-wrap: wrap;
+  margin-bottom: var(--space-m);
+}
+.foot__meta {
+  font-size: var(--step--1);
+  color: oklch(70% 0.04 130);
+  max-width: 44ch;
+}
+.foot__links {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem 1.2rem;
+  font-size: var(--step--1);
+  color: oklch(85% 0.03 125);
+}
+.foot__links a { transition: color .2s; }
+.foot__links a:hover { color: var(--lime); }
+
+.foot__rule {
+  grid-column: 1 / -1;
+  margin-top: var(--space-l);
+  padding-top: var(--space-m);
+  border-top: 1px solid oklch(35% 0.06 145);
+  display: flex; justify-content: space-between;
+  font-size: 0.76rem;
+  color: oklch(65% 0.04 130);
+  flex-wrap: wrap; gap: 1rem;
+}
+
+.btn--lime-on-forest { background: var(--lime); color: var(--forest); }
+.btn--lime-on-forest:hover { background: var(--lime-hot); transform: translateY(-1px); }
+.btn--ghost-on-forest {
+  color: var(--paper);
+  box-shadow: inset 0 0 0 1.5px oklch(80% 0.05 125);
+}
+.btn--ghost-on-forest:hover { background: var(--paper); color: var(--forest); box-shadow: none; }
+
+/* ====================================================================
+   MOTION
+   ==================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal {
+    opacity: 0;
+    transform: translateY(26px);
+    animation: reveal 0.95s var(--ease-out-expo) forwards;
+  }
+  .reveal-1 { animation-delay: 0.05s; }
+  .reveal-2 { animation-delay: 0.16s; }
+  .reveal-3 { animation-delay: 0.30s; }
+  .reveal-4 { animation-delay: 0.44s; }
+  .reveal-5 { animation-delay: 0.58s; }
+  @keyframes reveal { to { opacity: 1; transform: translateY(0); } }
+
+  .float-in {
+    opacity: 0;
+    transform: scale(0.96) translateY(20px);
+    animation: floatIn 1.15s 0.22s var(--ease-out-expo) forwards;
+  }
+  .float-in--late { animation-delay: 0.45s; animation-duration: 1s; }
+  @keyframes floatIn { to { opacity: 1; transform: scale(1) translateY(0); } }
+
+  .on-scroll {
+    opacity: 0; transform: translateY(32px);
+    transition: opacity 0.9s var(--ease-out-expo), transform 0.9s var(--ease-out-expo);
+  }
+  .on-scroll.in { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav__inner">
+    <a href="#" class="brand" aria-label="Peel — home">
+      <svg class="brand__mark" viewBox="0 0 40 40" aria-hidden="true">
+        <path d="M 8 12 C 6 22, 14 34, 26 32 C 36 30, 38 18, 30 10 C 22 4, 10 4, 8 12 Z"
+              fill="oklch(90% 0.17 125)"/>
+        <path d="M 26 32 C 34 32, 38 22, 36 14 C 38 22, 34 30, 26 32 Z"
+              fill="oklch(52% 0.20 138)" opacity="0.7"/>
+        <path d="M 20 6 Q 22 2 26 3 Q 26 8 22 8 Z"
+              fill="oklch(32% 0.07 148)"/>
+      </svg>
+      Peel
+    </a>
+    <nav class="nav__links">
+      <a href="#how">How it works</a>
+      <a href="#dashboard">The ledger</a>
+      <a href="#incent">Why it pays</a>
+      <a href="#cta" class="btn btn--primary">Get early access <span aria-hidden="true">↗</span></a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============================================================
+       HERO
+       ============================================================ -->
+  <section class="hero">
+    <div class="wrap hero__grid">
+      <div>
+        <div class="hero__kicker reveal reveal-1">
+          <span class="hero__kicker__dot" aria-hidden="true"></span>
+          A public food-waste programme · top 25% earn credits
+        </div>
+        <h1 class="reveal reveal-2">
+          Weigh what the kitchen <em>leaves behind.</em>
+        </h1>
+        <p class="hero__lede reveal reveal-3">
+          Peel tokenises every invoice and every POS sale. Standard recipes back-calculate what the kitchen should have consumed — and the residue is waste. At period close, an independent Regulator Agent mints tradable credits to the top-performing 25%.
+        </p>
+        <div class="hero__cta reveal reveal-4">
+          <a href="#cta" class="btn btn--primary btn--lg">Onboard your kitchen <span aria-hidden="true">→</span></a>
+          <a href="#how" class="btn btn--ghost btn--lg">See the mass balance</a>
+        </div>
+        <div class="hero__meta reveal reveal-5">
+          Public-good infrastructure · Operated by the programme · Ranked and signed on Hedera
+        </div>
+      </div>
+
+      <div class="hero__visual">
+        <div class="hero__blob float-in" aria-hidden="true">
+          <svg class="blob-svg" viewBox="0 0 540 540" xmlns="http://www.w3.org/2000/svg">
+            <!-- Main blob -->
+            <path d="M 110 170
+                     C 70 80, 230 20, 340 55
+                     C 460 85, 520 210, 485 335
+                     C 455 445, 330 500, 215 480
+                     C 90 460, 25 325, 60 235
+                     C 75 205, 92 188, 110 170 Z"
+                  fill="oklch(90% 0.17 125)"/>
+
+            <!-- Inner darker lime crescent -->
+            <path d="M 300 85
+                     C 420 110, 490 215, 470 330
+                     C 445 440, 335 490, 230 475
+                     C 290 455, 380 410, 425 330
+                     C 465 250, 440 170, 300 85 Z"
+                  fill="oklch(78% 0.21 128)" opacity="0.58"/>
+
+            <!-- Highlight -->
+            <ellipse cx="185" cy="170" rx="55" ry="32"
+                     fill="oklch(96% 0.07 120)" opacity="0.75"
+                     transform="rotate(-25 185 170)"/>
+
+            <!-- Stem -->
+            <path d="M 248 30 Q 258 5 282 10 Q 296 22 286 44 Q 272 54 256 48 Z"
+                  fill="oklch(34% 0.08 148)"/>
+
+            <!-- Leaf -->
+            <path d="M 282 28 Q 320 10 354 30 Q 356 62 322 68 Q 298 62 282 44 Z"
+                  fill="oklch(65% 0.17 140)"/>
+            <path d="M 292 40 Q 318 40 344 50"
+                  stroke="oklch(34% 0.08 148)" stroke-width="2.2"
+                  fill="none" stroke-linecap="round"/>
+
+            <!-- Tally marks (ledger suggestion) -->
+            <g stroke="oklch(22% 0.06 148)" stroke-width="5.5"
+               stroke-linecap="round" opacity="0.62">
+              <line x1="128" y1="325" x2="128" y2="385"/>
+              <line x1="148" y1="325" x2="148" y2="385"/>
+              <line x1="168" y1="325" x2="168" y2="385"/>
+              <line x1="188" y1="325" x2="188" y2="385"/>
+              <line x1="118" y1="360" x2="198" y2="350"/>
+            </g>
+            <text x="125" y="420"
+                  font-family="Fraunces, serif"
+                  font-size="30" font-weight="500" font-style="italic"
+                  fill="oklch(22% 0.06 148)" opacity="0.72"
+                  letter-spacing="-0.5">mass balance</text>
+          </svg>
+        </div>
+
+        <div class="hero__peek float-in float-in--late" aria-label="Period close preview">
+          <div class="hero__peek__head">
+            Period close
+            <small>Apr 2026</small>
+          </div>
+          <div class="hero__peek__row"><span>Purchased</span><b class="tnum">8,920 kg</b></div>
+          <div class="hero__peek__row"><span>Cooked</span><b class="tnum">7,284 kg</b></div>
+          <div class="hero__peek__row"><span>Residue</span><b class="tnum">1,635 kg</b></div>
+          <div class="hero__peek__row"><span>Rank</span><b class="tnum" style="color: var(--lime-deep)">12 / 100</b></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       STAT STRIP
+       ============================================================ -->
+  <section class="stat">
+    <div class="wrap stat__grid">
+      <div class="stat__big tnum on-scroll">920,000</div>
+      <div class="stat__copy on-scroll">
+        tonnes of food are wasted every year by UK restaurants, pubs and caterers. Three quarters of it is avoidable — and almost none of it is counted at the point it's thrown away.
+        <cite>— WRAP · Overview of waste in the UK hospitality &amp; food service sector</cite>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       HOW IT WORKS
+       ============================================================ -->
+  <section class="how" id="how">
+    <div class="wrap">
+      <div class="how__head">
+        <div>
+          <div class="section-eyebrow">The method</div>
+          <h2 class="section-title">Waste is <em>derived,</em><br>not reported.</h2>
+        </div>
+        <p class="how__head__aside">
+          A kitchen can't lie about waste if the numbers come from the books it already keeps. Invoices in, POS out, standard recipes in between. The residue tells the truth.
+        </p>
+      </div>
+
+      <div class="stations">
+        <article class="station station--1 on-scroll">
+          <div class="station__num">01</div>
+          <h3>Tokenise what comes in</h3>
+          <p>Every supplier invoice mints a <b>RAW</b> token on Hedera — one kilogram, one unit. Your pantry becomes an on-ledger balance, aligned to your procurement cycle.</p>
+          <div class="station__token">
+            <span class="station__token__pill"><b>●</b> RAW · HTS fungible</span>
+          </div>
+        </article>
+
+        <article class="station station--2 on-scroll">
+          <div class="station__num">02</div>
+          <h3>Back-calculate the menu</h3>
+          <p>Every POS sale maps to a standard recipe — kilograms per dish, drawn from CoFID. Units sold × kg per unit = theoretical consumption, reconciled against your purchases.</p>
+          <div class="station__token">
+            <span class="station__token__pill"><b>●</b> COOKED · POS × recipe</span>
+          </div>
+        </article>
+
+        <article class="station station--3 on-scroll">
+          <div class="station__num">03</div>
+          <h3>Top quartile earns</h3>
+          <p>Residual = purchased − cooked. The Regulator Agent ranks every participating kitchen each period and mints credits to the top 25%. No forms. No gaming. No donated-food loophole.</p>
+          <div class="station__token">
+            <span class="station__token__pill"><b>●</b> RDC · top 25%</span>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       DASHBOARD / RECEIPT
+       ============================================================ -->
+  <section class="dash" id="dashboard">
+    <div class="wrap dash__inner">
+      <div class="dash__text on-scroll">
+        <div class="section-eyebrow">The period close</div>
+        <h2>Ranked by a <em>regulator,</em> not by you.</h2>
+        <p>At period close, a Regulator Agent queries every participating kitchen's HCS log, ranks them by waste rate, and mints credits only to the top quartile — proportional to how far below the cutoff you fall.</p>
+        <ul>
+          <li>Two Hedera operators: Kitchen + Regulator</li>
+          <li>Kitchen logs invoices and POS events; Regulator ranks and mints</li>
+          <li>Every kilogram traceable on public mirror nodes</li>
+        </ul>
+      </div>
+
+      <div class="on-scroll">
+        <figure class="receipt" aria-label="Sample period close receipt">
+          <div class="receipt__stamp" aria-hidden="true">
+            Ranked<br>Regulator 0.0.4721
+            <small>Period close · 01 May 2026</small>
+          </div>
+
+          <div class="receipt__head">
+            <div class="receipt__title">
+              Kitchen #042 · SE15
+              <small>Period · April 2026 (procurement cycle)</small>
+            </div>
+            <div class="receipt__hcs">
+              HCS topic<br>
+              <b>0.0.5214</b><br>
+              seq 00238
+            </div>
+          </div>
+
+          <div class="receipt__row">
+            <span class="receipt__label">Purchased</span>
+            <span class="receipt__tag receipt__tag--mint">RAW · invoices</span>
+            <span class="receipt__val tnum">8,920.00 kg</span>
+          </div>
+          <div class="receipt__row">
+            <span class="receipt__label">Cooked (POS × recipe)</span>
+            <span class="receipt__tag receipt__tag--burn">COOKED · derived</span>
+            <span class="receipt__val tnum">7,284.50 kg</span>
+          </div>
+          <div class="receipt__row">
+            <span class="receipt__label">Residual waste</span>
+            <span class="receipt__tag receipt__tag--derived">RESIDUE</span>
+            <span class="receipt__val tnum">1,635.50 kg</span>
+          </div>
+
+          <div class="receipt__sep"></div>
+
+          <div class="receipt__compare">
+            <span>Programme 75th-percentile cutoff</span>
+            <b class="tnum">20.4%</b>
+          </div>
+          <div class="receipt__compare">
+            <span>Your period waste rate</span>
+            <b class="tnum">18.3%</b>
+          </div>
+          <div class="receipt__compare">
+            <span>Distance below cutoff</span>
+            <b class="tnum">−2.1 pts</b>
+          </div>
+          <div class="receipt__compare">
+            <span>Cohort rank this period</span>
+            <b class="tnum">12 / 100 · top 12%</b>
+          </div>
+
+          <div class="receipt__credit">
+            <span class="receipt__credit__label">Credits minted this period</span>
+            <span class="receipt__credit__val tnum">+187<span>RDC</span></span>
+          </div>
+
+          <div class="receipt__footer">
+            <span>Programme issuance · Q2 2026 · tradable</span>
+            <a href="#">View on HashScan <span aria-hidden="true">↗</span></a>
+          </div>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       INCENTIVE
+       ============================================================ -->
+  <section class="incent" id="incent">
+    <div class="wrap">
+      <div class="incent__head">
+        <div>
+          <div class="section-eyebrow">Why it pays</div>
+          <h2 class="section-title">Kitchens pay <em>zero.</em><br>The programme pays <em>the top quartile.</em></h2>
+        </div>
+        <p>
+          Peel is public-good infrastructure. The programme operator sets the specs, funds the credit pool, and publishes the rules. We provide the ledger no one has to trust, because anyone can verify it.
+        </p>
+      </div>
+
+      <div class="incent__grid">
+        <article class="tile tile--a on-scroll">
+          <span class="tile__tag">Revenue, not cost</span>
+          <h3>Top <em>25%</em> earns, every period.</h3>
+          <p>The programme mints tradable REDUCTION_CREDIT tokens to the top-performing quartile each procurement cycle, proportional to how far below the cutoff you land. Cash-convertible through the platform.</p>
+          <span class="tile__foot">Programme-issued · Guardian-ready</span>
+          <div class="tile__big" aria-hidden="true">25%</div>
+        </article>
+
+        <article class="tile tile--b on-scroll">
+          <span class="tile__tag">Defra-aligned</span>
+          <h3>The programme <em>is</em> the disclosure.</h3>
+          <p>Built to plug into Defra's emerging mandatory reporting framework under the Environment Act 2021. Compliance becomes a side-effect of participating.</p>
+          <span class="tile__foot">Environment Act 2021</span>
+        </article>
+
+        <article class="tile tile--c on-scroll">
+          <span class="tile__tag">See the £</span>
+          <h3>The ledger shows which shelf is <em>bleeding.</em></h3>
+          <p>Not kilograms — pounds. Period one, every period after.</p>
+          <span class="tile__foot">First-period payback</span>
+        </article>
+
+        <article class="tile tile--d on-scroll">
+          <span class="tile__tag">Scope 3 wedge</span>
+          <h3>A ledger your <em>buyers</em> can already read.</h3>
+          <p>Hotel groups, universities and contract caterers are on the hook for supply-chain emissions. A public programme ledger lets them cite your performance without a single site visit.</p>
+          <span class="tile__foot">CSRD + SBTi aligned</span>
+        </article>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============================================================
+     FOOTER CTA
+     ============================================================ -->
+<footer class="foot" id="cta">
+  <div class="wrap foot__grid">
+    <div>
+      <h2>Run the <em>honest</em> kitchen your guests think you already do.</h2>
+      <div class="foot__cta">
+        <a href="#" class="btn btn--lg btn--lime-on-forest">Request early access <span aria-hidden="true">→</span></a>
+        <a href="#" class="btn btn--lg btn--ghost-on-forest">Read the brief</a>
+      </div>
+      <p class="foot__meta">
+        Built during the Hedera Agentic Society Hackathon, 11–12 April 2026, London. Testnet only, no VC deck, made with real kilograms.
+      </p>
+    </div>
+    <nav class="foot__links" aria-label="Footer">
+      <a href="#how">How it works</a>
+      <a href="#dashboard">The weekly ledger</a>
+      <a href="#incent">Why it pays</a>
+      <a href="#">For procurement teams</a>
+      <a href="#">For insurers</a>
+      <a href="#">Docs &amp; testnet</a>
+    </nav>
+    <div class="foot__rule">
+      <span>© 2026 Peel Kitchen Ltd. HBAR-powered. Benchmark data: WRAP · Defra CarbonWARM2 · PHE CoFID.</span>
+      <span>Made with real food, honest numbers, and the Hedera network.</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Scroll reveal via IntersectionObserver
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e) => {
+      if (e.isIntersecting) {
+        e.target.classList.add('in');
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -5% 0px' });
+
+  document.querySelectorAll('.on-scroll').forEach(el => io.observe(el));
+</script>
+
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "name": "peel",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Peel — Hedera Agentic Society hackathon. Market + Programme workstreams.",
+  "scripts": {
+    "bootstrap:tokens": "tsx market/scripts/bootstrap-tokens.ts",
+    "market:run": "tsx market/scripts/run-three-agents.ts",
+    "market:serve": "npx http-server market -p 5173 -c-1",
+    "programme:run": "tsx programme/scripts/run-period-close.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hashgraph/sdk": "^2.54.0",
+    "@langchain/core": "^0.3.0",
+    "@langchain/openai": "^0.3.0",
+    "dotenv": "^16.4.5",
+    "hedera-agent-kit": "^3.0.0",
+    "langchain": "^0.3.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

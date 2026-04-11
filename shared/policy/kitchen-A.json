@@ -1,0 +1,33 @@
+{
+  "kitchenName": "Kitchen A — Shoreditch",
+  "kitchenAccountId": "$KITCHEN_A_ID",
+  "_note": "kitchenAccountId is resolved from env at load time. Pre-seeded surplus: RICE. Deficit: PASTA. Guarantees a rice-for-pasta trade with Kitchen B during the demo.",
+  "RICE": {
+    "floor_price_hbar_per_kg": 0.50,
+    "ceiling_price_hbar_per_kg": 1.20,
+    "surplus_threshold_kg": 10,
+    "opening_discount_pct": 25,
+    "max_trade_size_kg": 20
+  },
+  "PASTA": {
+    "floor_price_hbar_per_kg": 0.55,
+    "ceiling_price_hbar_per_kg": 1.10,
+    "surplus_threshold_kg": 10,
+    "opening_discount_pct": 25,
+    "max_trade_size_kg": 20
+  },
+  "FLOUR": {
+    "floor_price_hbar_per_kg": 0.40,
+    "ceiling_price_hbar_per_kg": 0.95,
+    "surplus_threshold_kg": 10,
+    "opening_discount_pct": 25,
+    "max_trade_size_kg": 20
+  },
+  "OIL": {
+    "floor_price_hbar_per_kg": 0.80,
+    "ceiling_price_hbar_per_kg": 1.60,
+    "surplus_threshold_kg": 5,
+    "opening_discount_pct": 20,
+    "max_trade_size_kg": 10
+  }
+}

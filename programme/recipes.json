@@ -1,0 +1,15 @@
+{
+  "_comment": "Static recipe book for Kitchen Agent back-calculation. kg_per_unit values are approximate and should be refined from CoFID (Composition of Foods Integrated Dataset) before any real deployment. For the hackathon demo, they just need to be internally consistent.",
+  "dishes": {
+    "risotto":        { "RICE":  0.12, "OIL":   0.01 },
+    "paella":         { "RICE":  0.14, "OIL":   0.02 },
+    "spaghetti_bol":  { "PASTA": 0.10, "OIL":   0.01 },
+    "penne_arrabb":   { "PASTA": 0.10, "OIL":   0.01 },
+    "lasagna":        { "PASTA": 0.15, "FLOUR": 0.02, "OIL": 0.01 },
+    "pizza_margh":    { "FLOUR": 0.22, "OIL":   0.01 },
+    "focaccia":       { "FLOUR": 0.18, "OIL":   0.03 },
+    "bao":            { "FLOUR": 0.08, "OIL":   0.005 },
+    "tempura":        { "FLOUR": 0.04, "OIL":   0.05 },
+    "churros":        { "FLOUR": 0.06, "OIL":   0.04 }
+  }
+}
