@@ -45,10 +45,20 @@ export class KitchenAgent {
     this.recipes = loadRecipes();
   }
 
-  /** TODO: mint RAW_{ingredient} HTS tokens + publish INVOICE_INGEST to HCS. */
+  /**
+   * Record a purchased delivery against this kitchen's running balance.
+   *
+   * Demo-level: updates local state only, so `run-period-close.ts` can seed
+   * three kitchens and run the pure-math path offline.
+   *
+   * EXTEND: mint `RAW_{ingredient}` HTS tokens to this kitchen's treasury
+   * via `HederaBuilder.mintFungibleToken` and publish an `INVOICE_INGEST`
+   * envelope to `PROGRAMME_TOPIC` via `HederaBuilder.submitTopicMessage`.
+   * Wired in a later commit once `shared/hedera/generated-tokens.json` and
+   * `generated-topics.json` are populated by market's bootstrap.
+   */
   async ingestInvoice(ingredient: RawIngredient, kg: number): Promise<void> {
     this.purchased[ingredient] += kg;
-    throw new Error("TODO: HTS mint + HCS publish INVOICE_INGEST");
   }
 
   /** Local POS counter (no HCS write; consumed only at period close). */

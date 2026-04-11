@@ -23,8 +23,7 @@ Branch: `programme` · Worktree: `peel-programme` · Mode: demo-first stub
 
 ## Blockers
 
-- `.env` not populated — commits 3+ blocked until operator + 3 kitchen keys land
-- Market worktree has NOT run `npm run bootstrap:tokens` — commits 4+ blocked until `shared/hedera/generated-topics.json` and `generated-tokens.json` exist with real testnet IDs
+- Market worktree's shared-layer edits (`client.ts` `parsePrivateKey`, `package.json` `@hashgraph/sdk` 2.80 bump, `tsconfig.json` `types:["node"]`) — needed on main before commits 2+ can run on testnet. Programme's critical path otherwise has no remaining blockers.
 
 ## Shared-layer edits
 
@@ -46,6 +45,7 @@ Additive notes from the `peel-market` worktree. Do not edit above this line; tha
 - **`package.json` MODIFIED.** `hedera-agent-kit@3.8.2` bundles `langchain@1.2.24` + `@langchain/core@1.1.24` internally. Staying on the scaffold's 0.3 line caused dual-installs that broke tool `instanceof` checks. Bumped to: `langchain ^1.3.0`, `@langchain/core ^1.1.24`, `@langchain/langgraph ^1.2.0`, `@langchain/openai ^1.4.0`, `@langchain/groq ^1.2.0` (new), `@hashgraph/sdk ^2.80.0` (from 2.54, matching hedera-agent-kit's internal), `zod ^3.25.0`. Programme doesn't use langchain so most bumps are no-ops, but the `@hashgraph/sdk` 2.54 → 2.80 bump touches programme's SDK imports. Run `npm run typecheck` after rebase; minor 2.80 API deltas may affect `regulator.ts` / `kitchen.ts`.
 - **`package.json` NEW SCRIPT.** Added `"h1:smoke": "tsx market/scripts/h1-smoke.ts"`. Additive only.
 - **`tsconfig.json` MODIFIED.** Market added `"types": ["node"]` to compiler options. TypeScript was implicitly including transitive `@types/*` from hedera-agent-kit's React Native dep chain, causing `TS2688: Cannot find type definition file for 'mapbox__point-geometry'`. Scoping to `["node"]` fixes the market build. Programme probably wants the same fix when it picks up hedera-agent-kit as a peer dep; if programme explicitly needs another type library, add it to the array (it's now opt-in not auto-discovered).
+- **NEW FILE `tasks/lessons.md`** — market created this per CLAUDE.md convention. Holds cross-cutting mistake patterns from this session. Programme should rebase and append its own entries on first correction.
 
 ### State as of market session pause
 

@@ -22,14 +22,28 @@ export class RegulatorAgent {
     throw new Error("TODO: mirror-node paginated fetch of PROGRAMME_TOPIC");
   }
 
-  /** Pure math — 75th percentile cutoff + credit formula from PRD-1. */
+  /**
+   * Pure math — top-quartile cutoff + credit formula from PRD-1.
+   *
+   * PRD-1 §3: cutoff = 75th percentile of waste_rate; winners are kitchens
+   * strictly below the cutoff. Sorting waste rates ascending (best first),
+   * kitchens at indices [0 .. floor(n*0.25)) are the top-quartile performers.
+   *
+   * Edge case: for n < 4, floor(n*0.25) = 0 with `<` filter yields no winners.
+   * Floor-lower-bound the cutoff index at 1 so the best performer always wins
+   * when at least one kitchen reported. Matches PRD intent for n=3 (demo
+   * case) without changing behaviour for n >= 4.
+   *
+   * EXTEND: formal tie-breaking on the cutoff, continuous interpolation for
+   * non-integer percentiles, and auditor-observable cutoff derivation.
+   */
   computeRanking(
     closes: PeriodClose[]
   ): { cutoffWasteRate: number; winners: RankingResult["winners"] } {
     if (closes.length === 0) return { cutoffWasteRate: 0, winners: [] };
 
     const rates = closes.map((c) => c.wasteRate).sort((a, b) => a - b);
-    const cutoffIndex = Math.floor(rates.length * 0.25);
+    const cutoffIndex = Math.max(1, Math.floor(rates.length * 0.25));
     const cutoffWasteRate = rates[cutoffIndex];
 
     const winners = closes
