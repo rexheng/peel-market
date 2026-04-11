@@ -99,15 +99,15 @@ Steps:
   ```
   Expected: `.env` prints to stdout (git-ignored, good), and the grep count is 1.
 
-- [ ] **Step 1.5: Update tasks/todo.md to clear the stale "generated-tokens.json" blocker**
+- [ ] **Step 1.5: Update tasks/todo.md to clear both stale blockers**
 
-  Read the current `tasks/todo.md` and remove the line under `## Blockers` that reads:
-  > `Market worktree has NOT run npm run bootstrap:tokens — commits 4+ blocked until shared/hedera/generated-topics.json and generated-tokens.json exist with real testnet IDs`
+  Read the current `tasks/todo.md`. Under `## Blockers`, rewrite the entire block:
+  - **Remove** `.env not populated — commits 3+ blocked until operator + 3 kitchen keys land` (stale — `.env` now has the operator creds; kitchens are provisioned by bootstrap-accounts.ts in task 2)
+  - **Remove** `Market worktree has NOT run npm run bootstrap:tokens — commits 4+ blocked until shared/hedera/generated-topics.json and generated-tokens.json exist with real testnet IDs` (stale — Q3 severs this dependency; programme's own bootstrap creates its topic and credit token)
+  - **Replace with** a single new entry:
+    > `Market worktree's shared-layer edits (client.ts parsePrivateKey, package.json @hashgraph/sdk 2.80 bump, tsconfig.json types:["node"]) — needed on main before commits 2+ can run on testnet. Programme's critical path otherwise has no remaining blockers.`
 
-  Replace with:
-  > `Market worktree's shared-layer edits (client.ts parsePrivateKey, package.json sdk 2.80 bump, tsconfig.json types) — needed before commits 2+ can run on testnet`
-
-  Rationale: Q3 severs programme's dependency on market's H2 bootstrap. Programme's own bootstrap creates its own topic and token.
+  Rationale: Q3 severs programme's dependency on market's H2 bootstrap. Programme's own bootstrap creates its own topic and token. The only remaining cross-worktree dependency is market landing its shared-layer edits (ECDSA key parsing + sdk version bump + tsconfig fix) onto `main`.
 
 - [ ] **Step 1.6: Stage and commit**
 
@@ -153,51 +153,131 @@ Steps:
 
 ---
 
-### Rebase gate (not a task)
+### Rebase gate (STOP — not a task, do not skip)
+
+> **STOP.** Do not proceed past this line until every check in this section passes. Task 2 creates real accounts on testnet; running it without market's `parsePrivateKey` helper will fail at runtime (the current `client.ts` uses `PrivateKey.fromString()` which accepts DER-encoded strings only — Rex's operator key is raw 32-byte hex ECDSA, which typechecks fine but throws at runtime).
 
 **Before any of tasks 2-9 can proceed**, market's shared-layer edits must land on `main`:
 
-1. `shared/hedera/client.ts` with `parsePrivateKey()` helper (required — programme's operator key is raw-hex ECDSA, the current `PrivateKey.fromString()` path fails on it)
+1. `shared/hedera/client.ts` with `parsePrivateKey()` helper (required)
 2. `package.json` with `@hashgraph/sdk ^2.80.0` bump
 3. `tsconfig.json` with `"types": ["node"]` added
 
 Once market has pushed these to `main`:
 
-```bash
-cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme"
-git fetch
-git rebase main
-npm install
-npm run typecheck
-```
+- [ ] **R.1: Rebase onto main**
 
-If `npm run typecheck` fails with @hashgraph/sdk 2.80 API deltas in `kitchen.ts` or `regulator.ts`, fix them as a standalone commit:
+  ```bash
+  cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme"
+  git fetch
+  git rebase main
+  ```
 
-```bash
-git add <affected files>
-git commit -m "chore: align programme SDK imports with @hashgraph/sdk 2.80"
-```
+- [ ] **R.2: Reinstall deps** (sdk 2.80 bump)
 
-**Do not proceed to task 2 until `npm run typecheck` exits cleanly.**
+  ```bash
+  cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && npm install 2>&1 | tail -5
+  ```
+
+- [ ] **R.3: Verify `parsePrivateKey` is actually on disk in client.ts**
+
+  ```bash
+  cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && grep -c "parsePrivateKey" shared/hedera/client.ts
+  ```
+  Expected: ≥ 1. If 0, market hasn't landed their edits — **STOP**, wait for market, re-run R.1 later. Do not proceed.
+
+- [ ] **R.4: Verify operator-client runtime sanity with a cheap read-only probe**
+
+  ```bash
+  cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && npx tsx -e 'import "dotenv/config"; import { operatorClient } from "./shared/hedera/client.js"; import { AccountBalanceQuery } from "@hashgraph/sdk"; (async () => { const c = operatorClient(); const op = c.operatorAccountId; if (!op) throw new Error("no operator"); const bal = await new AccountBalanceQuery().setAccountId(op).execute(c); console.log("operator:", op.toString(), "balance:", bal.hbars.toString()); await c.close(); })()'
+  ```
+  Expected: prints `operator: 0.0.8583839 balance: <N> ℏ` with N ≥ 20. If it throws on key parsing, R.3 is lying — investigate.
+
+  This verifies end-to-end that the ECDSA key parses AND the operator account exists on testnet AND has enough balance — without burning any hbar.
+
+- [ ] **R.5: Run typecheck**
+
+  ```bash
+  cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && npm run typecheck 2>&1
+  ```
+  Expected: exit 0.
+
+  If it fails with @hashgraph/sdk 2.80 API deltas in `kitchen.ts` or `regulator.ts`, fix them as a standalone commit:
+
+  ```bash
+  git add <affected files>
+  git commit -m "chore: align programme SDK imports with @hashgraph/sdk 2.80"
+  ```
+  Re-run R.5 until clean.
+
+**Do not proceed to task 2 until R.1–R.5 all pass.**
 
 ---
 
-### Task 2: Commit 2 — `shared/hedera/bootstrap-accounts.ts` + run on testnet
+### Task 2: Commit 2 — `shared/hedera/urls.ts` + `shared/hedera/bootstrap-accounts.ts` + run on testnet
 
-**Context:** Creates 3 fresh ECDSA kitchen accounts on testnet, funds each with 2 hbar, sets `maxAutomaticTokenAssociations=5` (1 for REDUCTION_CREDIT now + 4 for RAW_* tokens in pass-2), and writes `shared/hedera/generated-accounts.json`. Idempotent: skips if the file already exists with 3 entries.
+**Context:** Two new files. `urls.ts` is a tiny HashScan URL helper (single source of truth for the `@→-` and `.→-` transaction-id transformation HashScan requires). `bootstrap-accounts.ts` creates 3 fresh ECDSA kitchen accounts on testnet, funds each with 2 hbar, sets `maxAutomaticTokenAssociations=5` (1 for REDUCTION_CREDIT now + 4 for RAW_* tokens in pass-2), and writes `shared/hedera/generated-accounts.json`. Idempotent: skips if the file already exists with 3 entries.
+
+**Why the URL helper matters:** Hedera transaction ids have the shape `0.0.X@1742834567.123456789`. HashScan's transaction route expects the form `0.0.X-1742834567-123456789` (both `@` and `.` in the timestamp replaced with `-`). Every HashScan URL in the demo — bootstrap logs, INVOICE_INGEST publishes, PERIOD_CLOSE publishes, mint, transfer, RANKING_RESULT — needs this conversion. One helper, used everywhere.
 
 **Files:**
+- Create: `shared/hedera/urls.ts`
 - Create: `shared/hedera/bootstrap-accounts.ts`
 
 **Preconditions:**
 - `.env` has `HEDERA_OPERATOR_ID` + `HEDERA_OPERATOR_KEY` + `HEDERA_OPERATOR_KEY_TYPE=ECDSA` ✅
-- Operator balance ≥ 10 hbar on testnet
-- Rebase gate passed
-- Market's `parsePrivateKey()` is on main
+- Operator balance ≥ 20 hbar on testnet (per spec §Risk 4 headroom)
+- Rebase gate R.1–R.5 all passed (including the operator-client runtime probe)
 
 Steps:
 
-- [ ] **Step 2.1: Write `shared/hedera/bootstrap-accounts.ts`**
+- [ ] **Step 2.1: Write `shared/hedera/urls.ts` (HashScan URL helper)**
+
+  Create the file with this content:
+
+  ```typescript
+  /**
+   * HashScan URL helpers — single source of truth for the Hedera-id → URL
+   * encoding quirks.
+   *
+   * Transaction ids on Hedera have the form `0.0.X@1742834567.123456789`.
+   * HashScan's transaction route expects the form `0.0.X-1742834567-123456789`:
+   * the `@` AND the `.` inside the timestamp are both replaced with `-`.
+   * Passing the raw `@` form produces a broken URL. Every caller in programme
+   * that wants a HashScan URL for a tx should go through `hashscanTx`.
+   *
+   * Topic and token URLs are simpler — the id format is already URL-safe.
+   */
+
+  export type HederaNetwork = "testnet" | "mainnet";
+
+  function network(): HederaNetwork {
+    return (process.env.HEDERA_NETWORK as HederaNetwork) ?? "testnet";
+  }
+
+  /** Convert `0.0.X@1742834567.123456789` → `0.0.X-1742834567-123456789`. */
+  export function encodeTxIdForHashscan(txId: string): string {
+    return txId.replace("@", "-").replace(/\.(\d+)$/, "-$1");
+  }
+
+  export function hashscanTx(txId: string): string {
+    return `https://hashscan.io/${network()}/transaction/${encodeTxIdForHashscan(txId)}`;
+  }
+
+  export function hashscanAccount(accountId: string): string {
+    return `https://hashscan.io/${network()}/account/${accountId}`;
+  }
+
+  export function hashscanTopic(topicId: string): string {
+    return `https://hashscan.io/${network()}/topic/${topicId}`;
+  }
+
+  export function hashscanToken(tokenId: string): string {
+    return `https://hashscan.io/${network()}/token/${tokenId}`;
+  }
+  ```
+
+- [ ] **Step 2.2: Write `shared/hedera/bootstrap-accounts.ts`**
 
   Create the file with this content:
 
@@ -215,7 +295,9 @@ Steps:
    * exits 0 without touching testnet.
    *
    * EXTEND: key rotation, account delete-on-teardown, reconciliation against
-   * testnet state beyond the file-exists check, per-kitchen policy metadata.
+   * testnet state beyond the file-exists check, per-kitchen policy metadata,
+   * partial-progress recovery (if account B fails, A is orphaned — pass-2
+   * should write partial state as each account succeeds).
    */
 
   import "dotenv/config";
@@ -228,6 +310,7 @@ Steps:
     Hbar,
   } from "@hashgraph/sdk";
   import { operatorClient } from "./client.js";
+  import { hashscanAccount } from "./urls.js";
 
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const GENERATED_PATH = resolve(__dirname, "generated-accounts.json");
@@ -243,10 +326,6 @@ Steps:
   }
 
   type AccountsFile = Record<KitchenId, KitchenAccountRecord>;
-
-  function hashscanAccount(accountId: string): string {
-    return `https://hashscan.io/testnet/account/${accountId}`;
-  }
 
   async function main() {
     if (existsSync(GENERATED_PATH)) {
@@ -273,7 +352,7 @@ Steps:
       const publicKey = privateKey.publicKey;
 
       const tx = await new AccountCreateTransaction()
-        .setKey(publicKey)
+        .setKeyWithoutAlias(publicKey)
         .setInitialBalance(new Hbar(2))
         .setMaxAutomaticTokenAssociations(5)
         .setAccountMemo(`Peel kitchen ${id}`)
@@ -304,17 +383,17 @@ Steps:
   });
   ```
 
-- [ ] **Step 2.2: Typecheck the new file**
+- [ ] **Step 2.3: Typecheck both new files**
 
   ```bash
   cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && npm run typecheck 2>&1
   ```
-  Expected: exit 0. If errors, the most likely cause is that `publicKey.toEvmAddress()` or `privateKey.toStringRaw()` has a different signature in sdk 2.80 — check with:
+  Expected: exit 0. If errors, the most likely cause is that `publicKey.toEvmAddress()` or `privateKey.toStringRaw()` has a different signature in sdk 2.80 — check the key classes directly (NOT `index.d.ts`, which re-exports but doesn't define these methods):
   ```bash
-  cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && grep -n "toEvmAddress\|toStringRaw" node_modules/@hashgraph/sdk/lib/index.d.ts
+  cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && grep -rn "toEvmAddress\|toStringRaw" node_modules/@hashgraph/sdk/lib/PublicKey.d.ts node_modules/@hashgraph/sdk/lib/PrivateKey.d.ts 2>&1
   ```
 
-- [ ] **Step 2.3: Run bootstrap-accounts on testnet**
+- [ ] **Step 2.4: Run bootstrap-accounts on testnet**
 
   ```bash
   cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && npx tsx shared/hedera/bootstrap-accounts.ts 2>&1
@@ -331,7 +410,9 @@ Steps:
 
   Each HashScan URL should open to a new account with 2 hbar balance and `Max auto-associations: 5`.
 
-- [ ] **Step 2.4: Verify idempotency**
+  **If the run fails partway through** (e.g. A succeeds but B fails): the file is not written, and A is orphaned on testnet. For the demo this is acceptable — re-run the script, which will create three fresh accounts; the orphan costs ~2 hbar. Do not attempt to recover the partial state unless you're over budget on operator hbar.
+
+- [ ] **Step 2.5: Verify idempotency**
 
   Run the command again. Expected:
   ```
@@ -341,32 +422,36 @@ Steps:
   ```
   No second set of accounts should be created on-chain.
 
-- [ ] **Step 2.5: Verify the generated file shape**
+- [ ] **Step 2.6: Verify the generated file shape**
 
   ```bash
   cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && cat shared/hedera/generated-accounts.json
   ```
   Expected: three top-level keys (`A`, `B`, `C`), each with `accountId`, `privateKey`, `publicKey`, `evmAddress` fields. All accountIds in `0.0.NNNNNNN` format.
 
-- [ ] **Step 2.6: Confirm the file is gitignored**
+- [ ] **Step 2.7: Confirm the file is gitignored**
 
   ```bash
   cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && git check-ignore shared/hedera/generated-accounts.json
   ```
   Expected: path printed to stdout (gitignored).
 
-- [ ] **Step 2.7: Commit**
+- [ ] **Step 2.8: Commit**
 
   ```bash
-  cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && git add shared/hedera/bootstrap-accounts.ts && git commit -m "$(cat <<'EOF'
-  shared: add bootstrap-accounts.ts for kitchen provisioning
+  cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && git add shared/hedera/urls.ts shared/hedera/bootstrap-accounts.ts && git commit -m "$(cat <<'EOF'
+  shared: add HashScan URL helper + bootstrap-accounts.ts
 
-  Creates 3 ECDSA kitchen accounts on testnet funded 2 hbar each with
-  maxAutomaticTokenAssociations=5 (1 slot for REDUCTION_CREDIT + 4 for
-  pass-2 RAW_* tokens). Writes shared/hedera/generated-accounts.json
-  (gitignored). Idempotent via file-exists check.
+  - urls.ts: single source of truth for HashScan URL construction. The tx id
+    encoding (0.0.X@s.n → 0.0.X-s-n) is the one non-obvious step; every
+    caller in programme routes through hashscanTx to avoid broken links.
+  - bootstrap-accounts.ts: creates 3 ECDSA kitchen accounts on testnet
+    funded 2 hbar each with maxAutomaticTokenAssociations=5 (1 slot for
+    REDUCTION_CREDIT + 4 for pass-2 RAW_* tokens). Writes
+    shared/hedera/generated-accounts.json (gitignored). Idempotent via
+    file-exists check. Uses setKeyWithoutAlias per sdk 2.81 deprecation.
 
-  Shared-layer addition; market reads the output when its H2 bootstrap
+  Both additive; market reads generated-accounts.json when its H2 bootstrap
   runs. No collision with existing shared files.
   EOF
   )"
@@ -376,7 +461,9 @@ Steps:
 
 ### Task 3: Commit 3 — `kitchens.ts` + `programme-tokens.ts` registry loaders
 
-**Context:** Two small loader files that mirror the existing `shared/hedera/tokens.ts` and `shared/hedera/topics.ts` pattern. No network. `kitchens.ts` also exposes a `kitchenClient(id)` function that falls back to `generated-accounts.json` when env vars are absent (which is always, since programme's `.env` doesn't set `KITCHEN_*_ID` vars).
+**Context:** Two small loader files that mirror the existing `shared/hedera/tokens.ts` and `shared/hedera/topics.ts` pattern. No network.
+
+**Naming collision note:** `shared/hedera/client.ts` already exports `kitchenAccountId(id)` (env-var only). We intentionally use DIFFERENT names in `kitchens.ts` (`kitchenAccountIdFromFile`, `kitchenClientFromFile`) to avoid shadowing. Programme always imports from `kitchens.ts`; market's existing callers of `client.kitchenAccountId` (if any) continue to work unchanged. This is a deliberate naming choice — do not rename.
 
 **Files:**
 - Create: `shared/hedera/kitchens.ts`
@@ -392,11 +479,12 @@ Steps:
    *
    * Reads shared/hedera/generated-accounts.json (produced by
    * bootstrap-accounts.ts) and exposes:
-   *   - kitchenAccountId(id)        canonical "0.0.X" for demo kitchen
-   *   - kitchenClientFromFile(id)   Client signed with the kitchen's own key
+   *   - kitchenAccountIdFromFile(id)  canonical "0.0.X" for a demo kitchen
+   *   - kitchenClientFromFile(id)     Client signed with the kitchen's own key
    *
-   * Prefers env vars KITCHEN_{A,B,C}_ID + KITCHEN_{A,B,C}_KEY when present;
-   * falls back to the generated file otherwise.
+   * Names intentionally differ from shared/hedera/client.ts#kitchenAccountId
+   * (which reads env vars only) to avoid symbol collision. Programme always
+   * calls the *FromFile variants.
    */
 
   import { readFileSync, existsSync } from "node:fs";
@@ -439,9 +527,7 @@ Steps:
     return cache;
   }
 
-  export function kitchenAccountId(id: KitchenId): string {
-    const envId = process.env[`KITCHEN_${id}_ID`];
-    if (envId) return envId;
+  export function kitchenAccountIdFromFile(id: KitchenId): string {
     return loadFile()[id].accountId;
   }
 
@@ -516,9 +602,10 @@ Steps:
   cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && git add shared/hedera/kitchens.ts shared/hedera/programme-tokens.ts && git commit -m "$(cat <<'EOF'
   shared: add kitchens.ts and programme-tokens.ts registry loaders
 
-  - kitchens.ts: loader for generated-accounts.json. Exposes kitchenAccountId
-    (env-var-first, file-fallback) and kitchenClientFromFile for per-kitchen
-    signing clients. ECDSA key path via PrivateKey.fromStringECDSA.
+  - kitchens.ts: loader for generated-accounts.json. Exposes
+    kitchenAccountIdFromFile and kitchenClientFromFile (distinct names from
+    client.ts#kitchenAccountId to avoid symbol collision). ECDSA key path
+    via PrivateKey.fromStringECDSA.
   - programme-tokens.ts: loader for generated-programme.json (PROGRAMME_TOPIC
     + REDUCTION_CREDIT). Mirrors the shared/hedera/tokens.ts pattern.
 
@@ -539,7 +626,7 @@ Steps:
 **Preconditions:**
 - Task 2 complete (generated-accounts.json exists)
 - Task 3 complete (programme-tokens loader exists)
-- Operator balance ≥ 5 hbar
+- Operator balance ≥ 20 hbar (matches spec §Risk 4 headroom; budget needs ~2 hbar here but we stay conservative)
 
 Steps:
 
@@ -575,22 +662,11 @@ Steps:
   import { HederaBuilder } from "hedera-agent-kit";
   import { operatorClient } from "../../shared/hedera/client.js";
   import type { ProgrammeRegistry } from "../../shared/hedera/programme-tokens.js";
+  import { hashscanToken, hashscanTopic } from "../../shared/hedera/urls.js";
 
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const PROGRAMME_PATH = resolve(__dirname, "../../shared/hedera/generated-programme.json");
   const TOPICS_PATH = resolve(__dirname, "../../shared/hedera/generated-topics.json");
-
-  function hashscanTx(txId: string): string {
-    // Hedera transaction id format is 0.0.X@seconds.nanos — HashScan accepts
-    // it with @ replaced by - in the URL path.
-    return `https://hashscan.io/testnet/transaction/${txId}`;
-  }
-  function hashscanToken(tokenId: string): string {
-    return `https://hashscan.io/testnet/token/${tokenId}`;
-  }
-  function hashscanTopic(topicId: string): string {
-    return `https://hashscan.io/testnet/topic/${topicId}`;
-  }
 
   async function main() {
     if (existsSync(PROGRAMME_PATH)) {
@@ -754,10 +830,11 @@ Steps:
   import { HederaBuilder } from "hedera-agent-kit";
   import type { ProgrammeMessage } from "@shared/types.js";
   import { loadProgrammeRegistry } from "@shared/hedera/programme-tokens.js";
+  import { hashscanTx } from "@shared/hedera/urls.js";
 
   export interface PublishResult {
     transactionId: string;
-    consensusTimestamp: string;
+    sequenceNumber: string;
     hashscanUrl: string;
   }
 
@@ -773,13 +850,10 @@ Steps:
     const resp = await tx.execute(client);
     const receipt = await resp.getReceipt(client);
     const transactionId = resp.transactionId.toString();
-    const consensusTimestamp = receipt.topicRunningHashVersion
-      ? receipt.topicSequenceNumber?.toString() ?? "unknown"
-      : "unknown";
     return {
       transactionId,
-      consensusTimestamp,
-      hashscanUrl: `https://hashscan.io/testnet/transaction/${transactionId}`,
+      sequenceNumber: receipt.topicSequenceNumber?.toString() ?? "unknown",
+      hashscanUrl: hashscanTx(transactionId),
     };
   }
   ```
@@ -962,14 +1036,14 @@ Steps:
 
   Add `import { publishToProgrammeTopic } from "../hedera/publish.js";` near the top.
 
-- [ ] **Step 6.4: Typecheck**
+- [ ] **Step 6.4: Typecheck (expected to fail cleanly)**
 
   ```bash
   cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && npm run typecheck 2>&1
   ```
-  Expected: exit 0. There will now be a typecheck error in `run-period-close.ts` because the `KitchenAgent` constructor changed signature. **Leave that error for task 9** — task 9 is the full-cycle wiring. But to validate just this commit in isolation, temporarily update the three `new KitchenAgent("X")` calls in `run-period-close.ts` to `new KitchenAgent("X", operatorClient())` so the typecheck passes. Revert those temporary edits before committing if task 9 will restructure run-period-close entirely.
+  Expected: **exits non-zero** with a `KitchenAgent` constructor-arity error in `run-period-close.ts`. The three `new KitchenAgent("A" | "B" | "C")` calls are missing the new `Client` argument. This is intentional — commit 6 changes the constructor, commits 7-8 add further deltas, and commit 9 rewrites `run-period-close.ts` to match the final constructor shapes. The typecheck errors are expected across commits 6, 7, and 8 and will clear in commit 9.
 
-  Actually, simpler: let the error stand for tasks 6-8 and fix it definitively in task 9. The typecheck command will report the error; this is expected. Proceed if the ONLY typecheck error is the `KitchenAgent` constructor arity in `run-period-close.ts`.
+  Proceed if the ONLY typecheck errors are constructor-arity mismatches on `KitchenAgent` or `RegulatorAgent` in `run-period-close.ts`. Any other error means something is genuinely wrong — stop and diagnose.
 
 - [ ] **Step 6.5: Do not run `programme:run` yet**
 
@@ -1020,12 +1094,12 @@ Steps:
   }
   ```
 
-- [ ] **Step 7.2: Typecheck**
+- [ ] **Step 7.2: Typecheck (still expected to fail cleanly)**
 
   ```bash
   cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && npm run typecheck 2>&1
   ```
-  Expected: same constructor-arity error in `run-period-close.ts` as task 6, and nothing new.
+  Expected: same `KitchenAgent` constructor-arity error from task 6 persists. No new errors. Proceed.
 
 - [ ] **Step 7.3: Commit**
 
@@ -1088,7 +1162,7 @@ Steps:
   ```bash
   cd "C:/Users/Rex/Desktop/Work/Projects/peel-programme" && npm run typecheck 2>&1
   ```
-  Expected: still only the kitchen-constructor error in `run-period-close.ts`. Now also `RegulatorAgent` constructor arity may flag — that will be fixed in task 9.
+  Expected: the kitchen-constructor error in `run-period-close.ts` from task 6 is still there, AND a new `RegulatorAgent` constructor-arity error now joins it (the existing `new RegulatorAgent()` call has no arguments but the constructor now demands a `Client`). Both are fixed definitively in task 9's full rewrite of `run-period-close.ts`. Proceed.
 
 - [ ] **Step 8.5: Commit**
 
@@ -1152,11 +1226,12 @@ Steps:
     });
     const mintResp = await mintTx.execute(this.client);
     await mintResp.getReceipt(this.client);
-    const mintUrl = `https://hashscan.io/testnet/transaction/${mintResp.transactionId.toString()}`;
+    const mintUrl = hashscanTx(mintResp.transactionId.toString());
 
     // Step 2: Transfer from treasury to each winner via raw TransferTransaction.
-    // HederaBuilder has no plain transferFungibleToken; the raw SDK call is
-    // the most honest path for a treasury-to-recipient distribution.
+    // HederaBuilder has no plain transferFungibleToken; raw SDK is the honest
+    // path. Client auto-signs with operator key (no explicit freezeWith/sign
+    // needed — the operator is both sender and payer).
     const operatorAccountId = this.client.operatorAccountId;
     if (!operatorAccountId) throw new Error("regulator client has no operator");
 
@@ -1165,13 +1240,13 @@ Steps:
       const minorUnits = minorUnitsByKitchen[w.kitchen];
       // Resolve winner kitchen label (KITCHEN_A/B/C) to an account id.
       const kitchenId = w.kitchen.replace(/^KITCHEN_/, "") as "A" | "B" | "C";
-      const recipientId = kitchenAccountId(kitchenId);
+      const recipientId = kitchenAccountIdFromFile(kitchenId);
       transferTx.addTokenTransfer(REDUCTION_CREDIT, operatorAccountId, -minorUnits);
       transferTx.addTokenTransfer(REDUCTION_CREDIT, recipientId, minorUnits);
     }
     const transferResp = await transferTx.execute(this.client);
     await transferResp.getReceipt(this.client);
-    const transferUrl = `https://hashscan.io/testnet/transaction/${transferResp.transactionId.toString()}`;
+    const transferUrl = hashscanTx(transferResp.transactionId.toString());
 
     return { mintUrl, transferUrl, minorUnitsByKitchen };
   }
@@ -1182,7 +1257,8 @@ Steps:
   import { TransferTransaction } from "@hashgraph/sdk";
   import { HederaBuilder } from "hedera-agent-kit";
   import { loadProgrammeRegistry } from "@shared/hedera/programme-tokens.js";
-  import { kitchenAccountId } from "@shared/hedera/kitchens.js";
+  import { kitchenAccountIdFromFile } from "@shared/hedera/kitchens.js";
+  import { hashscanTx } from "@shared/hedera/urls.js";
   ```
 
 - [ ] **Step 9.2: Replace `publishRankingResult`**
@@ -1347,7 +1423,14 @@ Steps:
     ranking  https://hashscan.io/testnet/transaction/...
   ```
 
-  Count HashScan URLs: **9** total (3 INVOICE_INGEST × wait — actually 7 invoices → 7 URLs) + 3 PERIOD_CLOSE + 1 mint + 1 transfer + 1 RANKING_RESULT = **13 URLs**. (The spec's §11 line of "9 URLs" was a typo; actual count depends on invoice count.)
+  **Expected HashScan URL count: 13**. Breakdown:
+  - 7 × INVOICE_INGEST (A has 2 invoices, B has 3, C has 2)
+  - 3 × PERIOD_CLOSE (one per kitchen)
+  - 1 × mint (REDUCTION_CREDIT supply 0 → 93 minor units)
+  - 1 × transfer (operator treasury → KITCHEN_A)
+  - 1 × RANKING_RESULT
+
+  Total = 13. Spec §11 says "9 URLs" which was written before the mint step was added and before counting per-invoice URLs — it's stale; 13 is the authoritative count.
 
   **Manually click each URL** and verify:
   - INVOICE_INGEST transactions succeeded with the envelope JSON visible in the HCS message decoder
@@ -1389,7 +1472,7 @@ Steps:
 - [ ] **Step 9.8: Update `tasks/todo.md` review section**
 
   Add to `## Review`:
-  > **2026-04-11 — commit 9 landed.** Full Programme demo cycle runs end-to-end on testnet. `npm run programme:run` produces 12 HashScan URLs (7 INVOICE_INGEST + 3 PERIOD_CLOSE + 1 mint + 1 transfer + 1 RANKING_RESULT). Seed data produces A as sole winner with 0.93 REDUCTION_CREDIT. `EXTEND:` markers flag the deferred production work: real OCR ingest, RAW token mints in `ingestInvoice`, multi-period continuous operation, consensus-watermark, web viewer, smart contracts.
+  > **2026-04-11 — commit 9 landed.** Full Programme demo cycle runs end-to-end on testnet. `npm run programme:run` produces 13 HashScan URLs (7 INVOICE_INGEST + 3 PERIOD_CLOSE + 1 mint + 1 transfer + 1 RANKING_RESULT). Seed data produces A as sole winner with 0.93 REDUCTION_CREDIT. `EXTEND:` markers flag the deferred production work: real OCR ingest, RAW token mints in `ingestInvoice`, multi-period continuous operation, consensus-watermark, web viewer, smart contracts.
 
   Commit:
   ```bash
