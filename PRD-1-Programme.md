@@ -40,7 +40,7 @@ Publishes signed `RANKING_RESULT` to HCS.
 
 | Service | Usage |
 |---|---|
-| **HTS** | `RAW_{ingredient}` × 5 tokens (shared with Market); `REDUCTION_CREDIT` fungible |
+| **HTS** | `RAW_{ingredient}` × 4 tokens (shared with Market); `REDUCTION_CREDIT` fungible |
 | **HCS** | Single global topic, all events signed by operator keys |
 | **Agent Kit v3** | Tool-calling runtime for both agents |
 | **Mirror Nodes** | Regulator reads; third parties can re-verify any ranking |

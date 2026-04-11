@@ -83,7 +83,7 @@ Runs every day per kitchen: (but stub this constant system for now)
 
 | Service | Usage | Depth |
 |---|---|---|
-| **HTS** | 5 `RAW_*` fungible tokens; standard transfer on trade settlement; HBAR for payment | High |
+| **HTS** | 4 `RAW_*` fungible tokens; standard transfer on trade settlement; HBAR for payment | High |
 | **HCS · MARKET_TOPIC** | Structured messages: `OFFER`, `PROPOSAL`, `TRADE_EXECUTED` | High |
 | **HCS · TRANSCRIPT_TOPIC** | Natural-language agent reasoning, one message per thought | High (on-theme) |
 | **Agent Kit v3** | One agent instance per kitchen, each with its own operator key | High |
@@ -145,7 +145,7 @@ Timestamps in the gutter. Kitchen ID colour-coded. Token names in tabular lime. 
 
 ### Inventory grid
 
-Small stacked cards, one per kitchen, each showing current balances across all five tokens. Number tickers update when trades settle.
+Small stacked cards, one per kitchen, each showing current balances across all four tokens. Number tickers update when trades settle.
 
 ## MVP scope — in
 
@@ -164,7 +164,7 @@ Small stacked cards, one per kitchen, each showing current balances across all f
 
 - Logistics / delivery / physical handover — narrated as "handled outside the ledger by partner network, v2"
 - Spoilage timers / expiry dates
-- Ingredient taxonomy beyond the five tokens
+- Ingredient taxonomy beyond the four tokens
 - Consumer-facing marketplace
 - Authentication / user accounts
 - Real POS / invoice integration (pre-seeded balances only)
@@ -173,7 +173,7 @@ Small stacked cards, one per kitchen, each showing current balances across all f
 
 | Decision | Value |
 |---|---|
-| Ingredient granularity | 5 `RAW_*` tokens only |
+| Ingredient granularity | 4 `RAW_*` tokens only |
 | Pricing mechanism | LLM-negotiated within policy-file floor/ceiling |
 | Autonomy | Fully autonomous, no human approval in demo |
 | Settlement | HTS token transfer + HBAR payment on-ledger; physical delivery out of scope |
@@ -205,7 +205,7 @@ Small stacked cards, one per kitchen, each showing current balances across all f
 | Hour | Task |
 |---|---|
 | **H1** | Agent Kit toolchain verified: `examples/langchain/tool-calling-agent.ts` published a test HCS message AND executed a test HTS transfer on testnet. **Do not proceed past this point if H1 fails.** |
-| **H2** | Create 5 `RAW_*` tokens on testnet, mint initial balances to 3 kitchen operator accounts, verify on HashScan |
+| **H2** | Create 4 `RAW_*` tokens on testnet, mint initial balances to 3 kitchen operator accounts, verify on HashScan |
 | **H3** | Kitchen Trader Agent skeleton: read inventory, compute surplus, publish `postOffer` to MARKET_TOPIC, publish reasoning to TRANSCRIPT_TOPIC |
 | **H4** | `scanMarket` + proposal flow: agent reads market, drafts counter, sends proposal |
 | **H5** | Trade acceptance + HTS transfer settlement, HBAR payment, logged to HCS |
@@ -218,7 +218,7 @@ Small stacked cards, one per kitchen, each showing current balances across all f
 ## Non-goals
 
 - Not a production-grade agent framework — just enough for a live 60s demo
-- Not a general marketplace protocol — hardcoded to five non-perishables
+- Not a general marketplace protocol — hardcoded to four non-perishables
 - Not a pricing oracle — policy file is the oracle
 - Not Function 1 — the Programme runs on the same tokens but is not being built in this hackathon beyond a name-drop at demo end
 
