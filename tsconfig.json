@@ -10,6 +10,7 @@
     "noImplicitAny": true,
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
+    "types": ["node"],
     "baseUrl": ".",
     "paths": {
       "@shared/*": ["shared/*"]

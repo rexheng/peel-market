@@ -5,20 +5,29 @@
   "type": "module",
   "description": "Peel — Hedera Agentic Society hackathon. Market + Programme workstreams.",
   "scripts": {
+    "h1:smoke": "tsx market/scripts/h1-smoke.ts",
     "bootstrap:tokens": "tsx market/scripts/bootstrap-tokens.ts",
     "market:run": "tsx market/scripts/run-three-agents.ts",
     "market:serve": "npx http-server market -p 5173 -c-1",
     "programme:run": "tsx programme/scripts/run-period-close.ts",
     "typecheck": "tsc --noEmit"
   },
+  "_dep_note": "hedera-agent-kit@3.8.2 pins @langchain/core=1.1.24 exact internally, but that version predates @langchain/core's /utils/standard_schema export which @langchain/groq@1.2.0 imports. Upgrading core to 1.1.39 (latest 1.1.x) gets standard_schema. npm overrides forces that version everywhere INCLUDING nested hedera-agent-kit deps, preventing dual installs and satisfying all runtime imports. @langchain/openai stays pinned to the version hedera-agent-kit expects since nothing else needs a newer one.",
   "dependencies": {
-    "@hashgraph/sdk": "^2.54.0",
-    "@langchain/core": "^0.3.0",
-    "@langchain/openai": "^0.3.0",
+    "@hashgraph/sdk": "2.80.0",
+    "@langchain/core": "1.1.39",
+    "@langchain/groq": "^1.2.0",
+    "@langchain/langgraph": "^1.2.0",
+    "@langchain/openai": "1.2.7",
     "dotenv": "^16.4.5",
-    "hedera-agent-kit": "^3.0.0",
-    "langchain": "^0.3.0",
-    "zod": "^3.23.8"
+    "hedera-agent-kit": "^3.8.2",
+    "langchain": "1.2.24",
+    "zod": "3.25.76"
+  },
+  "overrides": {
+    "@langchain/core": "1.1.39",
+    "@langchain/openai": "1.2.7",
+    "@hashgraph/sdk": "2.80.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
