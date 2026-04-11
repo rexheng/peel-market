@@ -121,8 +121,9 @@ export class KitchenAgent {
     };
   }
 
-  /** TODO: publish the PeriodClose envelope to PROGRAMME_TOPIC, signed. */
-  async publishPeriodClose(msg: PeriodClose): Promise<void> {
-    throw new Error("TODO: HCS publish PERIOD_CLOSE");
+  /** Publish the PeriodClose envelope to PROGRAMME_TOPIC, signed by this kitchen. */
+  async publishPeriodClose(msg: PeriodClose): Promise<string> {
+    const result = await publishToProgrammeTopic(this.client, msg);
+    return result.hashscanUrl;
   }
 }
