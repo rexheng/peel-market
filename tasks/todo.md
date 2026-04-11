@@ -103,6 +103,37 @@ skill. Five commits + 1 rebase-pick already on branch (see SHAs above).
 
 **Session 1 — 6 commits landed.** Tasks 1–5 complete. Pure-math offline cycle validated (Task 1). Kitchen accounts + PROGRAMME_TOPIC + REDUCTION_CREDIT provisioned on testnet (Tasks 2 + 4). Registry loaders + publish/mirror helpers written (Tasks 3 + 5). No failed testnet transactions. Typecheck green. Spec + quality reviews passed (Tasks 1, 2). Tasks 3–5 reviewed lightly to preserve context budget. Tasks 6–9 deferred to session 2 with the handoff above.
 
+**Session 2 — 4 commits landed, demo complete.** Tasks 6–9 shipped as `4fc54e9`, `e5d081b`, `6bdf3db`, `9b9bac3`. Kitchen constructor takes a per-kitchen Client; `ingestInvoice` publishes `INVOICE_INGEST` envelopes and `publishPeriodClose` one-lines into the publish helper. Regulator constructor takes operator Client; `fetchAllPeriodCloses` delegates to mirror helper with bounded poll; `mintCreditsToTopQuartile` does two-step mint-to-treasury then raw `TransferTransaction` distribution; `publishRankingResult` one-lines into the publish helper. `run-period-close.ts` rewritten to drive the full cycle with per-kitchen clients. Subagent review loop skipped per Rex direction (plan has verbatim code).
+
+**Open design decision resolved: Option A.** Shipped with programme's isolated kitchens (`0.0.8598914-16`) and programme's own `PROGRAMME_TOPIC=0.0.8598980`. Market's kitchens (`0.0.8598874/77/79`) and market's `PROGRAMME_TOPIC=0.0.8598889` remain narratively separate. Rationale: no cross-worktree file copy (lesson #1 risk); PRD's "shared primitive" pitch is about RAW_* tokens which `ingestInvoice` doesn't touch (EXTEND:-deferred), so shared-kitchens story is cosmetic for this pass.
+
+**Live end-to-end run on testnet (2026-04-11, periodEnd `2026-04-11`):** 13 HashScan URLs produced, mirror returned 3/3 closes (no degraded mode), KITCHEN_A sole winner with 0.93 REDUCTION_CREDIT (cutoff 12.9% vs A's 9.2%).
+
+- INVOICE_INGEST (7):
+  - A RICE 22kg: `0.0.8598914-1775949919-825055397`
+  - A OIL 3kg:  `0.0.8598914-1775949920-197657265`
+  - B PASTA 25kg: `0.0.8598915-1775949923-838479124`
+  - B FLOUR 3kg: `0.0.8598915-1775949925-217669217`
+  - B OIL 3kg:   `0.0.8598915-1775949925-420060210`
+  - C OIL 5kg:   `0.0.8598916-1775949927-417936140`
+  - C FLOUR 30kg: `0.0.8598916-1775949929-142896714`
+- PERIOD_CLOSE (3):
+  - A (25kg/22.7kg/2.3kg/9.2%): `0.0.8598914-1775949930-165013646`
+  - B (31kg/27.0kg/4.0kg/12.9%): `0.0.8598915-1775949933-373961698`
+  - C (35kg/22.6kg/12.4kg/35.4%): `0.0.8598916-1775949934-448322065`
+- Mint (REDUCTION_CREDIT 0 → 93 minor units): `0.0.8583839-1775949940-938088038`
+- Transfer (operator treasury → KITCHEN_A, 93 minor units): `0.0.8583839-1775949940-798730524`
+- RANKING_RESULT: `0.0.8583839-1775949945-902379313`
+
+**EXTEND: markers surviving into pass-2** (concrete backlog):
+
+- `kitchen.ts#ingestInvoice`: also mint `RAW_{ingredient}` HTS tokens to kitchen treasury via `HederaBuilder.mintFungibleToken` once market's H2 populates `generated-tokens.json`. Bookkeeping detail; doesn't affect period-close math (POS-derived).
+- `regulator.ts#mintCreditsToTopQuartile`: handle tie-breaks on equal waste rates; atomic mint+transfer via scheduled tx so the whole distribution appears as one HashScan entry.
+- `mirror.ts#fetchPeriodCloses`: pagination beyond first page (100 messages), consensus-watermark correctness, auth, gzip transport, server-side filter by message kind.
+- `publish.ts#publishToProgrammeTopic`: per-message signing keys, retry-on-BUSY, envelope deduplication by content hash.
+- `regulator.ts#computeRanking`: formal tie-breaking on the cutoff, continuous interpolation for non-integer percentiles, auditor-observable cutoff derivation.
+- `run-period-close.ts`: real invoices via OCR/POS webhooks, per-ingredient mass balance, anti-gaming checks on POS spikes, multi-period continuous operation.
+
 ---
 
 ## From market terminal (append-only, 2026-04-11)
