@@ -1462,8 +1462,9 @@ Steps:
     full INGEST → CLOSE → RANK → MINT → DISTRIBUTE → PUBLISH cycle, print
     HashScan URLs at every step.
 
-  End-to-end: npm run programme:run executes ~12 testnet transactions
-  and prints the same number of HashScan URLs. This is the demo runner
+  End-to-end: npm run programme:run executes 13 testnet transactions
+  (7 INVOICE_INGEST + 3 PERIOD_CLOSE + 1 mint + 1 transfer + 1 RANKING_RESULT)
+  and prints one HashScan URL per transaction. This is the demo runner
   for the closing beat of the market demo.
   EOF
   )"
