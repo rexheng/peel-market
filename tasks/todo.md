@@ -25,12 +25,45 @@ Branch: `market` · Worktree: `peel-market` · Priority: **PRIMARY BUILD** · PR
 - [x] `npm run typecheck` — baseline clean
 - [x] Enumerate hedera-agent-kit v3.8.2 tool surface via Hedera docs on context7
 
-### Pending
-- [ ] **[BLOCKED on brainstorming]** Write `market/scripts/h1-smoke.ts` — design pending Rex's scope decision
-- [ ] **[BLOCKED on brainstorming]** Run H1 smoke test end-to-end on testnet, capture HashScan links
-- [ ] **[BLOCKED on H1 pass]** Commit H1 as review checkpoint
-- [ ] **[BLOCKED on H1 pass]** H2: `market/scripts/bootstrap-tokens.ts` — 4 `RAW_*` tokens + 3 HCS topics + per-kitchen seed balances, writes `shared/hedera/generated-{tokens,topics}.json`
-- [ ] **[BLOCKED on H2]** H3-H10 per PRD-2 build order
+### H1 — committed (a0e7cef)
+
+- [x] Wrote and ran `market/scripts/h1-smoke.ts` end-to-end
+- [x] Second shared-layer edit to `shared/hedera/client.ts`: `parsePrivateKey()` now respects the `*_KEY_TYPE` env hint and detects DER by `302` prefix instead of trial-parsing. `fromStringDer` was silently parsing raw hex as Ed25519, returning a key whose pubkey didn't match the operator's ECDSA account.
+- [x] `package.json` gained npm `overrides` forcing `@langchain/core=1.1.39` everywhere (needed for `standard_schema` export `@langchain/groq@1.2.0` imports); also single-instances `@hashgraph/sdk` and `@langchain/openai`.
+- [x] Agent construction diverged from spec: TWO single-tool agents (one per gate op) instead of one two-tool agent. Forced by Groq free-tier 12K TPM limit on llama-3.3-70b-versatile (one 17-tool agent sent 21.7K tokens).
+- [x] System prompt tightened ("Call the tool EXACTLY ONCE. Never call it twice.") to fix a `GraphRecursionError` from llama-3.3-70b looping after successful tool calls.
+- [x] Verified on testnet — both HashScan URLs show `SUCCESS`, mirror-node round-trip parses the envelope as `TranscriptEntry` and asserts the 100-unit token balance landed immediately on the scratch account.
+
+### H2 — committed
+
+- [x] Rewrote `market/scripts/bootstrap-tokens.ts` — no longer a stub.
+- [x] Three kitchen accounts created with ECDSA keys, 10 HBAR each, unlimited auto-association.
+- [x] Four `RAW_*` fungible tokens minted with operator as treasury: 1000 kg initial supply each, 3 decimals, infinite supply type, operator supply-key (so programme can mint more per HIP-904 invoice-driven flow).
+- [x] Three HCS topics created (`MARKET_TOPIC`, `TRANSCRIPT_TOPIC`, `PROGRAMME_TOPIC`).
+- [x] Seed balances transferred per PRD-2 §MVP scope:
+    - A: 50 kg RICE, 2 kg PASTA
+    - B: 2 kg RICE, 50 kg PASTA
+    - C: 20 kg RICE + 20 kg PASTA + 20 kg FLOUR + 50 kg OIL (the "balanced, surplus OIL" interpretation)
+- [x] Written to three gitignored files under `shared/hedera/`:
+    - `generated-accounts.json` `{A,B,C: {accountId, privateKey(DER), publicKey(DER)}}`
+    - `generated-tokens.json` `{RICE, PASTA, FLOUR, OIL}`
+    - `generated-topics.json` `{MARKET_TOPIC, TRANSCRIPT_TOPIC, PROGRAMME_TOPIC}`
+
+**Resource inventory after H2 bootstrap run on 2026-04-11:**
+- Kitchens: `A=0.0.8598874`, `B=0.0.8598877`, `C=0.0.8598879`
+- Tokens: `RICE=0.0.8598881`, `PASTA=0.0.8598883`, `FLOUR=0.0.8598884`, `OIL=0.0.8598885`
+- Topics: `MARKET_TOPIC=0.0.8598886`, `TRANSCRIPT_TOPIC=0.0.8598887`, `PROGRAMME_TOPIC=0.0.8598889`
+
+### Pending (H3 and later)
+
+- [ ] **H3** — Kitchen Trader Agent: inventory read via `getAccountTokenBalancesQueryTool`, compute surplus, `postOffer` → `MARKET_TOPIC`, `publishReasoning` → `TRANSCRIPT_TOPIC`
+- [ ] **H4** — `scanMarket` + proposal flow
+- [ ] **H5** — `acceptTrade` — HTS transfer + HBAR settlement
+- [ ] **H6** — Run three agents simultaneously, guarantee ≥1 end-to-end trade
+- [ ] **H7** — `app.html` three-panel UI reads both topics via mirror node
+- [ ] **H8** — UI polish
+- [ ] **H9** — End-to-end rehearsal + insurance recording
+- [ ] **H10** — Demo script rehearsal
 
 ## Blockers
 
