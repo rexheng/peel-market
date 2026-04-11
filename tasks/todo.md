@@ -1,6 +1,6 @@
 # Peel Programme — Session Task Log
 
-Branch: `programme` · Worktree: `peel-programme` · Mode: demo-first stub
+Branch: `main` (programme merged 2026-04-12) · Worktree: `aaFood Waste Solver` · Status: demo complete
 
 ## Decisions
 
@@ -9,86 +9,42 @@ Branch: `programme` · Worktree: `peel-programme` · Mode: demo-first stub
 - **Hedera Docs MCP:** installed via `claude mcp add --transport http hedera-docs https://docs.hedera.com/mcp`. Replaces Context7 for `@hashgraph/sdk` reference.
 - **Hgraph MCP:** not installed. Requires a `pk_prod_` key from the Hgraph dashboard. Mirror node access happens via plain HTTP from regulator code instead.
 
-## Session handoff — resume here (2026-04-11, end of session 1)
+## Status — DEMO COMPLETE (2026-04-12)
 
-**Read in order on fresh session:**
-1. This section (top-to-bottom)
-2. `docs/superpowers/plans/2026-04-11-peel-programme-demo.md` — especially **Task 6 onward**
-3. `docs/superpowers/specs/2026-04-11-peel-programme-demo-design.md` if you need context
-4. `TaskList` tool to see the 9-task tracker (durable across sessions)
+The Programme demo is finished and merged to `main`. The `programme` branch and its `peel-programme` worktree are gone. Fresh sessions should work from `main` in this worktree (`aaFood Waste Solver`). Full cycle runs end-to-end on testnet via `npm run programme:run`.
 
-**Worktree:** `C:\Users\Rex\Desktop\Work\Projects\peel-programme` on branch `programme`.
+**What shipped (11 commits total, sessions 1 + 2):**
 
-### Shipped this session (6 commits on `programme` branch)
+Session 1 (Tasks 1–5 + rebase gate): seed data + n<4 cutoff fix, shared HashScan URL helper + kitchen account bootstrap, registry loaders, `PROGRAMME_TOPIC` + `REDUCTION_CREDIT` provisioned on testnet, publish/mirror helpers.
 
-| SHA | Commit | Plan task |
-|---|---|---|
-| `6334bce` | `programme: seed 3-kitchen demo data + n<4 cutoff fix + local ingestInvoice` | Task 1 |
-| `8349733` | `chore: pull market shared-layer edits into programme` (cherry-pick) | Rebase gate |
-| `33624ac` | `shared: add HashScan URL helper + bootstrap-accounts.ts` | Task 2 |
-| `6ca4ece` | `shared: add kitchens.ts and programme-tokens.ts registry loaders` | Task 3 |
-| `a6793a6` | `programme: add bootstrap-programme.ts (topic + credit token)` | Task 4 |
-| `2c9a53e` | `programme: add hedera/publish.ts + hedera/mirror.ts helpers` | Task 5 |
+Session 2 (Tasks 6–9 + flowchart):
+- `4fc54e9` Task 6 — `kitchen.ingestInvoice` publishes `INVOICE_INGEST`, takes per-kitchen `Client`
+- `e5d081b` Task 7 — `kitchen.publishPeriodClose` wired to publish helper
+- `6bdf3db` Task 8 — `regulator.fetchAllPeriodCloses` wired via mirror node, constructor takes operator `Client`
+- `9b9bac3` Task 9 — `regulator.mintCreditsToTopQuartile` (mint-then-raw-transfer) + `publishRankingResult` + `run-period-close.ts` rewritten for full cycle
+- `7a910e3` docs — todo.md Review section updated with live run evidence
+- `5747b2b` docs — Food Credits flowchart (md + standalone HTML in `docs/`)
 
-All tasks 1–5 passed spec + runtime validation. Typecheck green on sdk 2.80. Testnet state provisioned.
+**Kitchen coordination decision: Option A shipped.** Programme uses its isolated kitchens (`0.0.8598914-16`) and its own `PROGRAMME_TOPIC=0.0.8598980`. Market's kitchens remain narratively separate. Rationale: no cross-worktree file copy, `ingestInvoice` doesn't touch RAW_* so shared-kitchens was cosmetic.
 
-### On-chain state programme owns (all on testnet)
+**On-chain state (reusable for future runs):**
+- Operator `0.0.8583839` (~795 ℏ after session 2's first run, drops ~1 ℏ per full cycle)
+- Kitchens `A=0.0.8598914`, `B=0.0.8598915`, `C=0.0.8598916` — keys in gitignored `shared/hedera/generated-accounts.json`
+- `PROGRAMME_TOPIC=0.0.8598980` — gitignored `shared/hedera/generated-programme.json`
+- `REDUCTION_CREDIT=0.0.8598981` — decimals=2, operator is treasury + supply key
 
-- **Operator:** `0.0.8583839` — balance ~808 ℏ after Tasks 2 + 4
-- **Kitchen accounts** (from `shared/hedera/generated-accounts.json`, gitignored):
-  - `KITCHEN_A = 0.0.8598914`
-  - `KITCHEN_B = 0.0.8598915`
-  - `KITCHEN_C = 0.0.8598916`
-  - Each funded 2 ℏ, `maxAutomaticTokenAssociations=5`
-- **`PROGRAMME_TOPIC = 0.0.8598980`** (from `shared/hedera/generated-programme.json`, gitignored)
-- **`REDUCTION_CREDIT = 0.0.8598981`** — decimals=2, supply=0, operator treasury+supply key
+**First full testnet run (2026-04-11, periodEnd `2026-04-11`):** 13 HashScan URLs, 3/3 mirror hits, KITCHEN_A sole winner at 0.93 `REDUCTION_CREDIT`. All URLs are in the Review section below.
 
-### Remaining work (Tasks 6–9 in the plan)
+**How to reproduce the demo:** `cd` into this worktree, `npm install` (first time only), `npm run programme:run`. Each run costs ~1 ℏ and mints 93 new minor units of `REDUCTION_CREDIT` to KITCHEN_A. No bootstrap needed unless operator balance drops below ~10 ℏ or the topic/token is deleted.
 
-All four tasks are pending in `TaskList`. Plan file has full code + steps.
-
-- **Task 6** — wire `kitchen.ingestInvoice` to publish `INVOICE_INGEST` envelope. Modifies `programme/agents/kitchen.ts`. KitchenAgent constructor adds a `Client` param. Typecheck will break in `run-period-close.ts` (constructor arity) — expected, fixed in Task 9.
-- **Task 7** — wire `kitchen.publishPeriodClose`. One-line delegate to the publish helper. Modifies `programme/agents/kitchen.ts`.
-- **Task 8** — wire `regulator.fetchAllPeriodCloses` via mirror node. Modifies `programme/agents/regulator.ts`. Regulator constructor adds a `Client` param. Typecheck still broken after this.
-- **Task 9** — wire `regulator.mintCreditsToTopQuartile` (two-step: `HederaBuilder.mintFungibleToken` then raw `TransferTransaction`) + `publishRankingResult`, and REWRITE `programme/scripts/run-period-close.ts` to drive the full cycle with per-kitchen clients. Typecheck clears. Final testnet run: expected 13 HashScan URLs (7 INVOICE_INGEST + 3 PERIOD_CLOSE + 1 mint + 1 transfer + 1 RANKING_RESULT). KITCHEN_A wins with 0.93 REDUCTION_CREDIT.
-
-### Open design decision for fresh session — READ BEFORE EXECUTING TASK 6
-
-Market landed its H2 bootstrap on the `market` branch while this session was running (see the market-terminal append section below). Market's H2 created its own 3 kitchen accounts (`0.0.8598874/77/79`) AND its own `PROGRAMME_TOPIC=0.0.8598889` and 4 `RAW_*` tokens — partially overlapping with programme's state.
-
-**The coordination question:** the PRD pitch is "the two products reconcile through a shared RAW_* token primitive" — meaning for the demo narrative to hold, the same kitchens that trade on the market screen should also be the ones period-closing on the programme screen. Programme's current state uses *isolated* kitchens (`0.0.8598914-16`) that never touched market state. Functionally the demo still works; narratively the story of "by the way, this ledger data feeds ranking" is weaker if the kitchen IDs don't match market's.
-
-Three options (Rex must decide before Task 9's live run):
-
-- **A) Ship as-is.** Programme uses its isolated kitchens. Demo works standalone. Closing beat is "and the programme math runs on public ledger data too" — true but less tight. Lowest friction. No more commits needed beyond Tasks 6–9.
-- **B) Switch to market's kitchens before Task 9.** Overwrite `shared/hedera/generated-accounts.json` with market's file (copy from `../peel-market/shared/hedera/generated-accounts.json`). Delete programme's `PROGRAMME_TOPIC=0.0.8598980` (orphan it on testnet) and update `generated-programme.json` to point at market's `PROGRAMME_TOPIC=0.0.8598889`. Re-run bootstrap-programme's REDUCTION_CREDIT mint against the new kitchens (or keep the existing credit token — it's operator-treasury, kitchen-agnostic). Tighter demo narrative.
-- **C) Hybrid.** Programme keeps its own kitchens for programme-internal correctness but publishes to market's `PROGRAMME_TOPIC` so events land on the topic market is watching. Mild divergence — "we use these kitchens for our math, those events end up on the topic the regulator reads from."
-
-**Recommendation for fresh session: ask Rex before executing Task 6.** This decision cascades — it changes what `kitchens.ts` reads from, what topic `publish.ts` hits, and whether Task 9's end-to-end run uses 12 or 13 URLs (if market kitchens, the auto-association slot may already be consumed). Default to **A** if Rex is unavailable — it's the path of least regret.
-
-### Session 1 learnings (apply to session 2)
-
-- **`tasks/todo.md` is a shared-on-disk file between the two worktrees.** The market parallel session writes directly to the file in peel-programme's checkout (via some sync mechanism, likely Rex hand-copying or a junction). **Never `git add tasks/todo.md` without reviewing what's staged.** Always stage specific files by path, never `git add .` or `git add <dir>`. Task 1's commit `6334bce` accidentally scooped up a market-scratchpad bullet because of this.
-- **Claude Code agent-teams is a real feature** (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in settings.json) but doesn't help two already-running manual sessions. Flag for future projects where both sessions can be launched from a lead session on day zero. Docs: https://code.claude.com/docs/en/agent-teams.md
-- **The `@` and `.` encoding in Hedera tx IDs for HashScan URLs** is handled in `shared/hedera/urls.ts#encodeTxIdForHashscan`. Every HashScan URL in programme code must go through `hashscanTx(txId)`, `hashscanTopic(id)`, `hashscanToken(id)`, or `hashscanAccount(id)`. Don't hand-construct URLs.
-- **`setKey` is deprecated in `@hashgraph/sdk` 2.81.** Use `setKeyWithoutAlias` on `AccountCreateTransaction`.
-- **`client.operatorPublicKey as PublicKey` cast** in `bootstrap-programme.ts:73` is technically unsafe (could be `KeyList`) but fine for single-operator demos. Accepted, not a concern.
-- **tsx inline `-e` mode doesn't resolve relative `.js` imports** — use a temp `.ts` file for runtime probes.
-- **`npm run programme:run` bypasses tsc** (uses tsx) so it runs even with broken typechecks. Handy for Task 1 offline validation but means typecheck must be a separate gate for tasks 6–9.
-
-### Exact resume command for fresh session
-
-```
-Read docs/superpowers/plans/2026-04-11-peel-programme-demo.md Tasks 6-9, check TaskList,
-confirm with Rex which of options A/B/C above for the kitchen coordination,
-then dispatch implementer subagents per superpowers:subagent-driven-development
-skill. Five commits + 1 rebase-pick already on branch (see SHAs above).
-```
+**Open items for future sessions:**
+- `EXTEND:` markers in the code are the concrete pass-2 backlog (grep `EXTEND:` in `programme/` and `shared/`). Most important: `kitchen.ingestInvoice` should also mint `RAW_{ingredient}` HTS tokens once market's H2 populates `generated-tokens.json`.
+- When the market session eventually merges to `main`, expect a minor conflict on `shared/hedera/client.ts` (market has a newer `parsePrivateKey` than programme pulled in `8349733`). Resolution: keep market's version, re-run `npm run typecheck` + `npm run programme:run` to confirm nothing regresses.
+- Lessons from both sessions live in `tasks/lessons.md` — read before any session that touches programme or shared/hedera/*.
 
 ## Blockers
 
-- Open design decision above (A/B/C) must be resolved before Task 6 execution.
-- Otherwise none — market's shared-layer edits are landed in `8349733`, typecheck green, operator funded.
+None — demo is shipped.
 
 ## Shared-layer edits (this session)
 
