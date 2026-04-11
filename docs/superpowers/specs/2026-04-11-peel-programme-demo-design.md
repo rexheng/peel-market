@@ -145,10 +145,11 @@ Existing class, modified. Constructor takes `(operatorClient, publishHelper, mir
 - `computeRanking(closes)` — pure math with cutoff fix applied (`Math.max(1, Math.floor(n * 0.25))`).
 - `mintCreditsToTopQuartile(winners)` — **two-step mint-then-distribute** because REDUCTION_CREDIT is created with initial supply 0 (see §5.7):
   1. Compute `totalMinorUnits = winners.reduce((sum, w) => sum + Math.round(w.creditsMinted * 100), 0)` (decimals=2).
-  2. **Mint step** — single `HederaBuilder.mintFungibleToken({ tokenId: REDUCTION_CREDIT, amount: totalMinorUnits })` transaction, signed by operator's supply key. Target is the treasury (operator itself). Returns the first HashScan URL.
-  3. **Distribute step** — single `TransferTransaction` via `HederaBuilder.transferFungibleToken*` moving `creditsMinted` minor units from operator to each winner account. Atomic multi-party transfer. Returns the second HashScan URL.
-  - For a single winner, this is two transactions; for multiple winners it's still two (one mint for the total, one transfer with multiple credits). This is semantically the right story for the demo: "the regulator mints new credits into existence and distributes them to top performers."
-  - `EXTEND:` marker on memo/compliance fields in the mint, on batching across periods, and on a richer audit trail.
+  2. **Mint step** — single `HederaBuilder.mintFungibleToken({ tokenId: REDUCTION_CREDIT, amount: totalMinorUnits })` transaction, signed by operator's supply key. Mints to treasury (operator itself). Returns the first HashScan URL.
+  3. **Distribute step** — single raw `TransferTransaction` from `@hashgraph/sdk` with one `addTokenTransfer(REDUCTION_CREDIT, operator, -amount)` and one `addTokenTransfer(REDUCTION_CREDIT, winner, +amount)` per winner. Atomic multi-party transfer. Returns the second HashScan URL.
+  - Why raw `TransferTransaction`? `HederaBuilder` exposes only `transferFungibleTokenWithAllowance` (requires pre-set allowance) and `airdropFungibleToken` (pending-airdrop semantics). Neither fits a treasury-to-recipient flow as cleanly as the raw SDK transfer. `HederaBuilder` is still used for the mint; the overall flow stays kit-authored except for this one call.
+  - For a single winner, this is two transactions; for multiple winners it's still two (one mint for the total, one transfer with multiple credits). Semantically: "the regulator mints new credits into existence and distributes them to top performers."
+  - `EXTEND:` marker on memo/compliance fields in the mint, batching across periods, and a richer audit trail.
 - `publishRankingResult(result)` — publishes `RANKING_RESULT` envelope via publish helper. Signed by operator. Returns the third HashScan URL.
 
 ### 5.4 Publish helper — `programme/hedera/publish.ts` (new)
