@@ -14,12 +14,25 @@
  * STATUS: skeleton.
  */
 
+import { Client } from "@hashgraph/sdk";
 import type { PeriodClose, RankingResult } from "@shared/types.js";
+import { fetchPeriodCloses } from "../hedera/mirror.js";
 
 export class RegulatorAgent {
-  /** Mirror-node read of all PERIOD_CLOSE messages in the period. */
-  async fetchAllPeriodCloses(periodEnd: string): Promise<PeriodClose[]> {
-    throw new Error("TODO: mirror-node paginated fetch of PROGRAMME_TOPIC");
+  constructor(private readonly client: Client) {}
+
+  /**
+   * Mirror-node read of all PERIOD_CLOSE messages in the period.
+   *
+   * Uses a bounded poll (10s/1s) because mirror node takes 3-7s to reflect
+   * a just-published HCS message. If `expectedCount` is known, the helper
+   * exits early once that many messages have been decoded.
+   */
+  async fetchAllPeriodCloses(
+    periodEnd: string,
+    expectedCount = 0
+  ): Promise<PeriodClose[]> {
+    return fetchPeriodCloses(periodEnd, { expectedCount });
   }
 
   /**
