@@ -15,6 +15,8 @@
 import "dotenv/config";
 import { KitchenAgent } from "../agents/kitchen.js";
 import { RegulatorAgent } from "../agents/regulator.js";
+import { operatorClient } from "@shared/hedera/client.js";
+import { kitchenClientFromFile } from "@shared/hedera/kitchens.js";
 
 /**
  * Hardcoded demo seed. Numbers chosen so Kitchen A wins decisively, B falls
@@ -70,65 +72,95 @@ const SEED: Record<"A" | "B" | "C", KitchenSeed> = {
 async function main() {
   const periodEnd = new Date().toISOString().slice(0, 10);
 
+  // Build clients: operator for the regulator, per-kitchen clients so each
+  // kitchen's HCS publish is attributed to its own account on HashScan.
+  const opClient = operatorClient();
   const kitchens = {
-    A: new KitchenAgent("A"),
-    B: new KitchenAgent("B"),
-    C: new KitchenAgent("C"),
+    A: new KitchenAgent("A", kitchenClientFromFile("A")),
+    B: new KitchenAgent("B", kitchenClientFromFile("B")),
+    C: new KitchenAgent("C", kitchenClientFromFile("C")),
   };
 
-  // Seed each kitchen with its hardcoded invoices + POS events.
+  // 1. Seed each kitchen with its invoices + POS events.
+  console.log(`\n=== INVOICE INGEST  ${periodEnd} ===`);
   for (const [id, seed] of Object.entries(SEED) as [
     "A" | "B" | "C",
     KitchenSeed,
   ][]) {
     for (const { ingredient, kg } of seed.invoices) {
-      await kitchens[id].ingestInvoice(ingredient, kg);
+      const url = await kitchens[id].ingestInvoice(ingredient, kg);
+      console.log(`  KITCHEN_${id}  ${ingredient} ${kg}kg  ${url}`);
     }
     for (const { dish, units } of seed.pos) {
       kitchens[id].ingestPOSEvent(dish, units);
     }
   }
 
-  const closes = [
-    kitchens.A.computePeriodClose(periodEnd),
-    kitchens.B.computePeriodClose(periodEnd),
-    kitchens.C.computePeriodClose(periodEnd),
-  ];
-
+  // 2. Compute and publish each kitchen's period close.
   console.log(`\n=== PERIOD CLOSE  ${periodEnd} ===`);
-  for (const close of closes) {
+  const closes = [];
+  for (const id of ["A", "B", "C"] as const) {
+    const close = kitchens[id].computePeriodClose(periodEnd);
+    const url = await kitchens[id].publishPeriodClose(close);
+    closes.push(close);
     console.log(
       `  ${close.kitchen}  purchased=${close.purchasedKg.toFixed(1)}kg  ` +
         `theoretical=${close.theoreticalConsumedKg.toFixed(1)}kg  ` +
         `waste=${close.residualWasteKg.toFixed(1)}kg  ` +
-        `rate=${(close.wasteRate * 100).toFixed(1)}%`
+        `rate=${(close.wasteRate * 100).toFixed(1)}%  ${url}`
     );
   }
 
-  const regulator = new RegulatorAgent();
-  const { cutoffWasteRate, winners } = regulator.computeRanking(closes);
+  // 3. Regulator: fetch via mirror, rank, mint+transfer, publish ranking.
+  const regulator = new RegulatorAgent(opClient);
 
-  console.log(`\n=== RANKING RESULT ===`);
-  console.log(`  Cutoff waste rate: ${(cutoffWasteRate * 100).toFixed(1)}%`);
-  if (winners.length === 0) {
-    console.log(`  No winners this period.`);
-  } else {
-    for (const w of winners) {
-      console.log(
-        `  ${w.kitchen}  waste=${(w.wasteRate * 100).toFixed(1)}%  ` +
-          `credits=${w.creditsMinted.toFixed(3)} REDUCTION_CREDIT`
-      );
-    }
+  console.log(`\n=== REGULATOR (fetching period closes from mirror node) ===`);
+  const fetchedCloses = await regulator.fetchAllPeriodCloses(
+    periodEnd,
+    closes.length
+  );
+  console.log(
+    `  mirror returned ${fetchedCloses.length} of ${closes.length} expected closes`
+  );
+
+  // If mirror returned fewer than expected (lag), fall back to in-memory closes.
+  const closesForRanking =
+    fetchedCloses.length === closes.length ? fetchedCloses : closes;
+  if (closesForRanking !== fetchedCloses) {
+    console.log(`  (degraded mode: ranking on in-memory closes, mirror lag)`);
   }
 
-  // EXTEND: the on-chain cycle below is wired in commits 5-8.
-  //   await regulator.mintCreditsToTopQuartile(winners);
-  //   await regulator.publishRankingResult({
-  //     kind: "RANKING_RESULT",
-  //     periodEnd,
-  //     cutoffWasteRate,
-  //     winners,
-  //   });
+  const { cutoffWasteRate, winners } = regulator.computeRanking(closesForRanking);
+
+  console.log(`\n=== RANKING RESULT ===`);
+  console.log(`  cutoff waste rate: ${(cutoffWasteRate * 100).toFixed(1)}%`);
+
+  if (winners.length === 0) {
+    console.log(`  no winners this period`);
+  } else {
+    const { mintUrl, transferUrl, minorUnitsByKitchen } =
+      await regulator.mintCreditsToTopQuartile(winners);
+    for (const w of winners) {
+      const units = minorUnitsByKitchen[w.kitchen] ?? 0;
+      console.log(
+        `  ${w.kitchen}  waste=${(w.wasteRate * 100).toFixed(1)}%  ` +
+          `credits=${(units / 100).toFixed(2)} REDUCTION_CREDIT`
+      );
+    }
+    console.log(`  mint   ${mintUrl}`);
+    console.log(`  xfer   ${transferUrl}`);
+  }
+
+  const rankingResult = {
+    kind: "RANKING_RESULT" as const,
+    periodEnd,
+    cutoffWasteRate,
+    winners,
+  };
+  const rankingUrl = await regulator.publishRankingResult(rankingResult);
+  console.log(`  ranking  ${rankingUrl}`);
+
+  await opClient.close();
 }
 
 main().catch((err) => {
