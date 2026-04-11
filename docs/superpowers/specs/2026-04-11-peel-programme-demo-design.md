@@ -99,17 +99,32 @@ Everything in PRD-1's "out of scope" list, plus everything marked `EXTEND:` in s
 
 Single entrypoint. Reads `.env`, instantiates operator client and 3 kitchen clients via `shared/hedera/client.ts`, loads `generated-programme.json` and `generated-accounts.json`, instantiates 3 `KitchenAgent` + 1 `RegulatorAgent`, drives the cycle linearly.
 
-Hardcoded `SEED` constant defines each kitchen's invoices + POS events. Arithmetic (confirmed in section 8):
+Hardcoded `SEED` constant defines each kitchen's invoices + POS events. Arithmetic (full derivation in section 8):
 
 ```
-A: purchased 25 kg → theoretical 22.7 kg → waste 2.3 kg  → rate 0.092   (WINS)
-B: purchased 31 kg → theoretical 27.0 kg → waste 4.0 kg  → rate 0.129   (cutoff)
-C: purchased 35 kg → theoretical 22.6 kg → waste 12.4 kg → rate 0.354
+A: purchased 25 kg → theoretical 22.7 kg → waste 2.3 kg  → rate 9.200%    (WINS)
+B: purchased 31 kg → theoretical 27.0 kg → waste 4.0 kg  → rate 12.903%   (cutoff)
+C: purchased 35 kg → theoretical 22.6 kg → waste 12.4 kg → rate 35.429%
 ```
 
-With the cutoff fix, A wins with `(0.129 − 0.092) × 25 = 0.925` REDUCTION_CREDIT.
+With the cutoff fix, A wins. Exact credit calculation (no intermediate rounding): `(4/31 − 2.3/25) × 25 = 0.92581` REDUCTION_CREDIT. At `decimals = 2`, that's `Math.round(0.92581 × 100) = 93` minor units, displayed as `0.93 REDUCTION_CREDIT`.
 
-Output format: ASCII tables on stdout, one HashScan URL per on-chain action, trailing summary line.
+Output format: fixed-width ASCII tables on stdout, one HashScan URL per on-chain action, trailing summary line. Mock-up:
+
+```
+=== PERIOD CLOSE  2026-04-11 ===
+  kitchen     purchased   theoretical   waste    rate     hashscan
+  KITCHEN_A      25.0 kg      22.7 kg    2.3 kg    9.2%   https://hashscan.io/testnet/transaction/0.0.8583839@...
+  KITCHEN_B      31.0 kg      27.0 kg    4.0 kg   12.9%   https://hashscan.io/testnet/transaction/0.0.8583839@...
+  KITCHEN_C      35.0 kg      22.6 kg   12.4 kg   35.4%   https://hashscan.io/testnet/transaction/0.0.8583839@...
+
+=== RANKING RESULT ===
+  cutoff waste rate: 12.9%
+  KITCHEN_A  wins 0.93 REDUCTION_CREDIT
+    mint  https://hashscan.io/testnet/transaction/0.0.8583839@...
+    xfer  https://hashscan.io/testnet/transaction/0.0.8583839@...
+  ranking  https://hashscan.io/testnet/transaction/0.0.8583839@...
+```
 
 ### 5.2 Kitchen Agent — `programme/agents/kitchen.ts`
 
@@ -128,8 +143,13 @@ Existing class, modified. Constructor takes `(operatorClient, publishHelper, mir
 
 - `fetchAllPeriodCloses(periodEnd)` — calls `mirror.fetchTopicMessages(PROGRAMME_TOPIC, windowStart, windowEnd)`, decodes each message via the zod `PeriodCloseSchema`, filters to `periodEnd` match. Polls up to 10s / 1s interval if returned set is shorter than expected. If mirror still lags after 10s, falls back to accepting fewer closes (degraded mode). `EXTEND:` marker for proper consensus watermark.
 - `computeRanking(closes)` — pure math with cutoff fix applied (`Math.max(1, Math.floor(n * 0.25))`).
-- `mintCreditsToTopQuartile(winners)` — for each winner, constructs a `TransferTransaction` via `HederaBuilder.transferFungibleToken*` or raw `TransferTransaction` (decided during implementation — see §9 risk 2). Minting amount = `Math.round(winner.creditsMinted * 10^decimals)`. Executes under operator (treasury of REDUCTION_CREDIT). Returns HashScan URL per transfer.
-- `publishRankingResult(result)` — publishes `RANKING_RESULT` envelope via publish helper. Signed by operator.
+- `mintCreditsToTopQuartile(winners)` — **two-step mint-then-distribute** because REDUCTION_CREDIT is created with initial supply 0 (see §5.7):
+  1. Compute `totalMinorUnits = winners.reduce((sum, w) => sum + Math.round(w.creditsMinted * 100), 0)` (decimals=2).
+  2. **Mint step** — single `HederaBuilder.mintFungibleToken({ tokenId: REDUCTION_CREDIT, amount: totalMinorUnits })` transaction, signed by operator's supply key. Target is the treasury (operator itself). Returns the first HashScan URL.
+  3. **Distribute step** — single `TransferTransaction` via `HederaBuilder.transferFungibleToken*` moving `creditsMinted` minor units from operator to each winner account. Atomic multi-party transfer. Returns the second HashScan URL.
+  - For a single winner, this is two transactions; for multiple winners it's still two (one mint for the total, one transfer with multiple credits). This is semantically the right story for the demo: "the regulator mints new credits into existence and distributes them to top performers."
+  - `EXTEND:` marker on memo/compliance fields in the mint, on batching across periods, and on a richer audit trail.
+- `publishRankingResult(result)` — publishes `RANKING_RESULT` envelope via publish helper. Signed by operator. Returns the third HashScan URL.
 
 ### 5.4 Publish helper — `programme/hedera/publish.ts` (new)
 
@@ -160,10 +180,10 @@ Hits `{HEDERA_MIRROR_NODE_URL}/api/v1/topics/{topicId}/messages?limit=100&order=
 
 One-shot standalone script. Not called by `run-period-close.ts`; invoked explicitly as `tsx shared/hedera/bootstrap-accounts.ts`.
 
-Creates 3 ECDSA accounts via `HederaBuilder.createAccount` or raw `AccountCreateTransaction`:
+Creates 3 ECDSA accounts via `HederaBuilder.createAccount`:
 - Key type: ECDSA (matches operator)
 - Initial balance: 2 hbar each
-- `maxAutomaticTokenAssociations`: 1 (one slot reserved for REDUCTION_CREDIT)
+- `maxAutomaticTokenAssociations`: **5** — one slot for REDUCTION_CREDIT (this demo) plus four for RAW_RICE / RAW_PASTA / RAW_FLOUR / RAW_OIL (pass-2 `EXTEND:`). Free at creation; avoids rotating kitchens when the RAW-mint path lands.
 
 Writes `shared/hedera/generated-accounts.json`:
 
@@ -180,10 +200,10 @@ Idempotent: if the file already exists, prints "accounts already provisioned" an
 ### 5.7 Bootstrap — `programme/scripts/bootstrap-programme.ts` (new)
 
 Standalone. Creates `PROGRAMME_TOPIC` via `HederaBuilder.createTopic` (no submit-key → any account can submit, simplest demo path). Creates `REDUCTION_CREDIT` fungible token via `HederaBuilder.createFungibleToken`:
-- Name: "Peel Reduction Credit"
+- Name: `Peel Reduction Credit`
 - Symbol: `REDUCTION_CREDIT`
 - Decimals: 2
-- Initial supply: 0
+- Initial supply: 0 (regulator mints new supply each period — see §5.3 for the two-step mint-then-distribute flow)
 - Supply type: infinite
 - Treasury: operator
 - Supply key: operator (so regulator can mint)
@@ -209,12 +229,16 @@ Both mirror the `tokens.ts`/`topics.ts` pattern: lazy read, throw clear error if
 
 ## 6. Shared-layer coordination with market
 
-Market has already modified `shared/hedera/client.ts` and `package.json` in the `market` branch — those edits are not yet on `main`. The programme worktree needs them before commits 3+ run on testnet.
+Market has already modified three shared-layer files in the `market` branch — those edits are not yet on `main`. The programme worktree needs all three before commits 2+ run on testnet:
+
+1. `shared/hedera/client.ts` — `parsePrivateKey()` helper with DER → ECDSA → Ed25519 fallback (so the raw-hex ECDSA operator key parses correctly)
+2. `package.json` — dependency bumps: `@hashgraph/sdk` 2.54 → 2.80 (matches hedera-agent-kit's internal), plus LangChain 1.x line for market's own use
+3. `tsconfig.json` — `"types": ["node"]` added to suppress the stray `TS2688 mapbox__point-geometry` error from parent-directory `@types` leak
 
 **Integration path:**
-1. Programme ships commit 1 locally on the programme branch without touching shared files (pure math + demo runner + cutoff fix)
-2. Market lands their shared-layer edits (client.ts parsePrivateKey, package.json deps, @hashgraph/sdk 2.80) onto the `main` branch
-3. Programme rebases `programme` onto `main`, runs `npm install`, runs `npm run typecheck`, fixes any @hashgraph/sdk 2.80 API deltas in `kitchen.ts`/`regulator.ts`
+1. Programme ships commit 1 locally on the programme branch without touching shared files (pure math + demo runner + cutoff fix; still on SDK 2.54 at this point — commit 1 only touches the three programme files and doesn't exercise any changed SDK surface)
+2. Market lands all three shared-layer edits onto the `main` branch
+3. Programme rebases `programme` onto `main`, runs `npm install`, runs `npm run typecheck`, fixes any @hashgraph/sdk 2.80 API deltas in `kitchen.ts`/`regulator.ts` as a small chore commit
 4. Programme proceeds with commits 2+ on top of the rebased branch
 
 **Programme's reciprocal shared-layer edits** (logged in `tasks/todo.md` before landing):
@@ -248,7 +272,9 @@ RegulatorAgent.fetchAllPeriodCloses() ◄── mirror node REST
 RegulatorAgent.computeRanking() ──► { cutoff, winners } (pure math)
     │
     ▼
-RegulatorAgent.mintCreditsToTopQuartile() ─► HTS TransferTransaction × winners
+RegulatorAgent.mintCreditsToTopQuartile()
+    ├── HederaBuilder.mintFungibleToken → HTS mint to treasury  (1 txn)
+    └── TransferTransaction → HTS transfer treasury → winners   (1 txn, multi-party)
     │
     ▼
 RegulatorAgent.publishRankingResult() ──► HCS PROGRAMME_TOPIC (signed by operator)
@@ -280,14 +306,19 @@ Verified against `programme/recipes.json` and `KitchenAgent.computePeriodClose`:
 - Theoretical OIL: 0.8 + 0.6 = 1.4 kg
 - Theoretical total: 22.6 kg; residual waste: 12.4 kg; rate: **0.354**
 
-**Ranking:**
-- Sorted ascending: `[0.092, 0.129, 0.354]`
-- `cutoffIndex = max(1, floor(3*0.25)) = max(1, 0) = 1`
-- `cutoff = rates[1] = 0.129`
-- Winners: `[c for c in closes if c.wasteRate < 0.129]` → `[A]`
-- A's credit: `(0.129 − 0.092) × 25 = 0.925 REDUCTION_CREDIT`
+**Exact rates (no intermediate rounding):**
+- Kitchen A: `2.3 / 25 = 0.09200000` (exact)
+- Kitchen B: `4.0 / 31 = 0.12903226`
+- Kitchen C: `12.4 / 35 = 0.35428571`
 
-With decimals=2, that rounds to `93` minor units → displayed as `0.93 REDUCTION_CREDIT`.
+**Ranking:**
+- Sorted ascending: `[0.09200000, 0.12903226, 0.35428571]`
+- `cutoffIndex = max(1, floor(3*0.25)) = max(1, 0) = 1`
+- `cutoff = rates[1] = 0.12903226`
+- Winners: `[c for c in closes if c.wasteRate < 0.12903226]` → `[A]`
+- A's credit (exact): `(0.12903226 − 0.09200000) × 25 = 0.92580645 REDUCTION_CREDIT`
+
+With `decimals = 2`, `Math.round(0.92580645 * 100) = 93` minor units → displayed as `0.93 REDUCTION_CREDIT`. The three-decimal-place figures in §5.1 are display rounding only; the code uses the exact values from `computePeriodClose`.
 
 ## 9. Risks
 
@@ -303,9 +334,10 @@ With decimals=2, that rounds to `93` minor units → displayed as `0.93 REDUCTIO
    - 1 × TokenCreate (1.00)
    - 3 × INVOICE_INGEST HCS submit (~0.0001 each)
    - 3 × PERIOD_CLOSE HCS submit (~0.0001 each)
+   - 1 × TokenMint REDUCTION_CREDIT to treasury (~0.001)
    - 1 × REDUCTION_CREDIT transfer with auto-association (~0.05)
    - 1 × RANKING_RESULT HCS submit (~0.0001)
-   - **Total: ~7.2 hbar** for bootstrap + cycle. Well within testnet faucet grant (1000 hbar standard).
+   - **Total: ~7.2 hbar** for bootstrap + cycle. Well within testnet faucet grant (1000 hbar standard). Precondition in §10 requires operator to hold ≥ 20 hbar for headroom.
 
 5. **Key format regression.** Market's `parsePrivateKey` should handle the raw-hex ECDSA operator key; if it doesn't, commit 3 (bootstrap-accounts) will fail at operator-client construction. **Mitigation:** programme verifies the operator client works by calling `client.ping()` or an equivalent no-op transaction before running any bootstrap. Fails loud and cheap.
 
@@ -315,10 +347,16 @@ With decimals=2, that rounds to `93` minor units → displayed as `0.93 REDUCTIO
 
 Each commit is a review gate. Stop after each, wait for Rex's sign-off before continuing. Commit 1 ships immediately; commits 2+ wait for market's shared-layer edits to land on `main`.
 
+**Preconditions before any testnet commit (2, 4, 6, 7, 8, 9):**
+- `.env` populated with `HEDERA_OPERATOR_ID`, `HEDERA_OPERATOR_KEY`, `HEDERA_OPERATOR_KEY_TYPE=ECDSA` ✅ (done)
+- Operator account has ≥ 20 hbar balance on testnet
+- Market's shared-layer edits are on `main` and programme has rebased
+- `npm run typecheck` passes after rebase
+
 | # | Commit | Testnet? | Gates |
 |---|---|---|---|
 | 1 | `programme: seed 3-kitchen demo data + n<4 cutoff fix + local-only invoice ingest` | no | — |
-| — | *(rebase onto market's shared-layer changes; fix sdk 2.80 deltas; ship as chore if needed)* | — | market H1 done |
+| — | *(rebase onto market's shared-layer changes; fix sdk 2.80 deltas; ship as `chore: align with sdk 2.80` if needed)* | — | market H1 done |
 | 2 | `shared: add bootstrap-accounts.ts (kitchen account provisioning)` + run it | yes | rebase complete |
 | 3 | `shared: add kitchens.ts + programme-tokens.ts registry loaders` | no | 2 |
 | 4 | `programme: add bootstrap-programme.ts (topic + credit token)` + run it | yes | 2, 3 |
@@ -328,23 +366,24 @@ Each commit is a review gate. Stop after each, wait for Rex's sign-off before co
 | 8 | `programme: wire regulator.fetchAllPeriodCloses via mirror node` | yes | 4 |
 | 9 | `programme: wire regulator.mintCreditsToTopQuartile + publishRankingResult — full cycle` | yes | 4, 8 |
 
-9 atomic commits (down from 11 in the brainstorm — commit 2 ECDSA dropped, commit 5 market-bootstrap-edit dropped as coordination-only).
+9 atomic commits. Commit 1 also clears the stale "commits 4+ blocked" entries in `tasks/todo.md` §Blockers — those were written when ingestInvoice was full-fat, and Q3's publish-only decision severs the RAW-token dependency. The todo.md blocker list is rewritten as part of commit 1's task-log update.
 
 ## 11. Testing
 
 No test framework configured; not adding one for the demo. Validation is empirical:
 
-- **Commit 1:** `npm run programme:run` eyeballed against the §8 arithmetic. Expect:
+- **Commit 1:** `npm run programme:run` eyeballed against the §8 arithmetic. Expect (rates shown at one decimal; the underlying floats are exact):
   ```
   KITCHEN_A purchased=25.0kg theoretical=22.7kg waste=2.3kg rate=9.2%
   KITCHEN_B purchased=31.0kg theoretical=27.0kg waste=4.0kg rate=12.9%
   KITCHEN_C purchased=35.0kg theoretical=22.6kg waste=12.4kg rate=35.4%
   Cutoff waste rate: 12.9%
-  KITCHEN_A waste=9.2% credits=0.925 REDUCTION_CREDIT
+  KITCHEN_A  waste=9.2%  credits=0.926 REDUCTION_CREDIT
   ```
+  The `0.926` figure is the rounded display of the exact `0.92580645`. A commit-1 run prints the float unrounded or rounded to 3 dp — both are acceptable as long as it's internally consistent with `Math.round(x * 100) = 93`.
 - **Commit 2:** bootstrap-accounts run prints 3 HashScan URLs. Each URL resolves to a valid account. `generated-accounts.json` has 3 entries.
 - **Commit 4:** bootstrap-programme run prints 2 HashScan URLs (topic + token create). `generated-programme.json` has both entries.
-- **Commits 6, 7, 8, 9:** run `npm run programme:run` and verify the terminal prints N HashScan URLs where N = (3 INVOICE_INGEST + 3 PERIOD_CLOSE + 1 RANKING_RESULT + 1 credit transfer) = 8 URLs. Each URL manually clicked to confirm on HashScan.
+- **Commits 6, 7, 8, 9:** run `npm run programme:run` and verify the terminal prints N HashScan URLs where N = (3 INVOICE_INGEST + 3 PERIOD_CLOSE + 1 mint + 1 transfer + 1 RANKING_RESULT) = **9 URLs**. Each URL manually clicked to confirm on HashScan.
 - **Final rehearsal:** run the full cycle from a cold start (`bootstrap-accounts.ts` → `bootstrap-programme.ts` → `run-period-close.ts`) on a clean `.env`. Time it end-to-end.
 
 If any step fails on testnet with an error that suggests a deeper bug, stop and diagnose — do not retry blindly.
