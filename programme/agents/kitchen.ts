@@ -14,8 +14,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
+import { Client } from "@hashgraph/sdk";
 import type { RawIngredient } from "@shared/hedera/tokens.js";
 import type { PeriodClose } from "@shared/types.js";
+import { publishToProgrammeTopic } from "../hedera/publish.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -40,7 +42,10 @@ export class KitchenAgent {
   };
   private readonly posCounts: Record<string, number> = {};
 
-  constructor(kitchenId: "A" | "B" | "C") {
+  constructor(
+    kitchenId: "A" | "B" | "C",
+    private readonly client: Client
+  ) {
     this.kitchenId = kitchenId;
     this.recipes = loadRecipes();
   }
@@ -51,14 +56,23 @@ export class KitchenAgent {
    * Demo-level: updates local state only, so `run-period-close.ts` can seed
    * three kitchens and run the pure-math path offline.
    *
-   * EXTEND: mint `RAW_{ingredient}` HTS tokens to this kitchen's treasury
-   * via `HederaBuilder.mintFungibleToken` and publish an `INVOICE_INGEST`
-   * envelope to `PROGRAMME_TOPIC` via `HederaBuilder.submitTopicMessage`.
-   * Wired in a later commit once `shared/hedera/generated-tokens.json` and
-   * `generated-topics.json` are populated by market's bootstrap.
+   * Publishes an INVOICE_INGEST envelope to PROGRAMME_TOPIC for auditability.
+   * Returns the HashScan URL of the publish tx for display in terminal output.
    */
-  async ingestInvoice(ingredient: RawIngredient, kg: number): Promise<void> {
+  async ingestInvoice(ingredient: RawIngredient, kg: number): Promise<string> {
     this.purchased[ingredient] += kg;
+    const result = await publishToProgrammeTopic(this.client, {
+      kind: "INVOICE_INGEST",
+      kitchen: `KITCHEN_${this.kitchenId}`,
+      ingredient,
+      kg,
+      invoiceId: `demo-${this.kitchenId}-${ingredient}-${Date.now()}`,
+    });
+    // EXTEND: also mint RAW_{ingredient} HTS tokens to this kitchen's treasury
+    // via HederaBuilder.mintFungibleToken once market's H2 bootstrap has
+    // populated shared/hedera/generated-tokens.json. The mint is a bookkeeping
+    // detail and doesn't affect period-close math (which is POS-derived).
+    return result.hashscanUrl;
   }
 
   /** Local POS counter (no HCS write; consumed only at period close). */
