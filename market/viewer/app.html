@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Peel · /app · Three Kitchens, Live</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- EXTEND: self-host fonts for the production build; Google Fonts CDN is
+       fine for the live demo. -->
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;500;600&family=DM+Sans:wght@400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* OKLCH palette copied from market/viewer/viewer.html (H3) which in turn
+       is anchored to index.html. Same variables, same kitchen colour mapping,
+       so the three surfaces feel like one product. */
+    :root {
+      --paper:    oklch(97% 0.01 95);
+      --paper-2:  oklch(95% 0.015 95);
+      --paper-3:  oklch(92% 0.025 100);
+      --ink:      oklch(25% 0.03 150);
+      --ink-dim:  oklch(55% 0.02 150);
+      --ink-mute: oklch(70% 0.015 145);
+      --lime:     oklch(87% 0.18 120);
+      --lime-dim: oklch(92% 0.12 120);
+      --forest:   oklch(42% 0.14 145);
+      --forest-2: oklch(32% 0.10 148);
+      --coral:    oklch(70% 0.2 30);
+      --coral-dim:oklch(82% 0.10 35);
+      --border:   oklch(88% 0.015 95);
+      --border-2: oklch(82% 0.02 100);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--paper);
+      color: var(--ink);
+      height: 100%;
+    }
+    body {
+      font-family: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.5;
+      font-feature-settings: "ss01", "ss02", "tnum";
+      display: flex;
+      flex-direction: column;
+    }
+    .mono { font-family: "DM Mono", "SFMono-Regular", Menlo, monospace; }
+    a { color: inherit; }
+
+    /* ------------------------------------------------------------ */
+    /*  Top bar                                                      */
+    /* ------------------------------------------------------------ */
+    header.topbar {
+      padding: 22px 36px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 24px;
+      flex-shrink: 0;
+    }
+    header.topbar h1 {
+      font-family: "Fraunces", Georgia, serif;
+      font-weight: 600;
+      font-size: 32px;
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+    header.topbar .subtitle {
+      font-family: "DM Mono", monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--forest);
+      margin-top: 4px;
+    }
+    header.topbar .meta {
+      font-family: "DM Mono", monospace;
+      font-size: 11px;
+      color: var(--ink-dim);
+      text-align: right;
+      letter-spacing: 0.04em;
+    }
+    header.topbar .meta .dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--lime);
+      margin-right: 6px;
+      vertical-align: middle;
+      box-shadow: 0 0 0 0 var(--lime);
+      animation: pulse 2.4s ease-out infinite;
+    }
+    header.topbar .meta .dot.error {
+      background: var(--coral);
+      animation: none;
+    }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 oklch(87% 0.18 120 / 0.6); }
+      70%  { box-shadow: 0 0 0 9px oklch(87% 0.18 120 / 0); }
+      100% { box-shadow: 0 0 0 0 oklch(87% 0.18 120 / 0); }
+    }
+
+    /* ------------------------------------------------------------ */
+    /*  Layout — three-panel grid                                     */
+    /* ------------------------------------------------------------ */
+    main.grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 55fr) minmax(0, 25fr) minmax(0, 20fr);
+      gap: 0;
+      min-height: 0;
+    }
+    section.panel {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      border-right: 1px solid var(--border);
+    }
+    section.panel:last-child { border-right: none; }
+    section.panel > .panel-header {
+      padding: 18px 28px 14px;
+      border-bottom: 1px solid var(--border);
+      font-family: "DM Mono", monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--ink-dim);
+      flex-shrink: 0;
+      background: var(--paper-2);
+    }
+    section.panel > .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 28px 40px;
+      min-height: 0;
+    }
+    /* Thin, unobtrusive scrollbars that match the paper palette. */
+    section.panel > .panel-body::-webkit-scrollbar { width: 8px; }
+    section.panel > .panel-body::-webkit-scrollbar-track { background: transparent; }
+    section.panel > .panel-body::-webkit-scrollbar-thumb {
+      background: var(--border-2);
+      border-radius: 4px;
+    }
+
+    /* ------------------------------------------------------------ */
+    /*  Panel 1 — Agent Transcript                                    */
+    /* ------------------------------------------------------------ */
+    #transcript-panel .panel-body { padding-right: 36px; }
+    .transcript-entry {
+      display: grid;
+      grid-template-columns: 62px 1fr;
+      gap: 14px;
+      padding: 18px 0;
+      border-bottom: 1px dashed var(--border);
+      align-items: flex-start;
+    }
+    .transcript-entry:last-child { border-bottom: none; }
+    .transcript-entry .ts {
+      font-family: "DM Mono", monospace;
+      font-size: 11px;
+      color: var(--ink-dim);
+      padding-top: 6px;
+      letter-spacing: 0.02em;
+    }
+    .transcript-entry .body { min-width: 0; }
+    .transcript-entry .kitchen-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-family: "DM Mono", monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border: 1px solid var(--border-2);
+      background: var(--paper);
+    }
+    .chip .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .chip.k-A { border-color: var(--lime); color: var(--forest); }
+    .chip.k-A .dot { background: var(--lime); }
+    .chip.k-B { border-color: var(--coral); color: var(--coral); }
+    .chip.k-B .dot { background: var(--coral); }
+    .chip.k-C { border-color: var(--forest); color: var(--forest); }
+    .chip.k-C .dot { background: var(--forest); }
+    .chip.k-unknown { border-color: var(--border-2); color: var(--ink-mute); }
+    .chip.k-unknown .dot { background: var(--ink-mute); }
+
+    .transcript-entry .thought {
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 18px;
+      line-height: 1.5;
+      color: var(--ink);
+      letter-spacing: -0.003em;
+      font-weight: 400;
+      white-space: pre-wrap;
+      max-width: 58ch;
+    }
+    .transcript-entry .meta-row {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .hashscan-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border: 1px solid var(--forest);
+      border-radius: 4px;
+      text-decoration: none;
+      color: var(--forest);
+      font-family: "DM Mono", monospace;
+      font-size: 10px;
+      background: var(--paper-2);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: background 0.15s ease, transform 0.1s ease;
+    }
+    .hashscan-badge:hover { background: var(--lime); transform: translateY(-1px); }
+
+    /* ------------------------------------------------------------ */
+    /*  Panel 2 — Trade feed                                         */
+    /* ------------------------------------------------------------ */
+    .trade-row {
+      display: grid;
+      grid-template-columns: 52px 1fr;
+      gap: 10px;
+      padding: 12px 0;
+      border-bottom: 1px dashed var(--border);
+      align-items: flex-start;
+      font-family: "DM Mono", monospace;
+      font-size: 12px;
+    }
+    .trade-row:last-child { border-bottom: none; }
+    .trade-row .ts {
+      color: var(--ink-dim);
+      padding-top: 2px;
+      font-size: 10px;
+    }
+    .trade-row .body { min-width: 0; }
+    .trade-row .line1 {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      font-weight: 500;
+      color: var(--ink);
+    }
+    .trade-row .arrow { color: var(--ink-dim); }
+    .trade-row .ingredient {
+      color: var(--forest);
+      background: var(--lime-dim);
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    .trade-row .price {
+      color: var(--ink-dim);
+      font-size: 11px;
+    }
+    .trade-row.kind-TRADE_EXECUTED .line1::before {
+      content: "✓";
+      color: var(--forest);
+      font-weight: 600;
+    }
+    .trade-row.kind-OFFER .line1::before {
+      content: "◯";
+      color: var(--lime-dim);
+    }
+    .trade-row.kind-PROPOSAL .line1::before {
+      content: "↺";
+      color: var(--coral);
+    }
+    .trade-row.kind-UNKNOWN {
+      opacity: 0.55;
+      font-style: italic;
+      color: var(--ink-mute);
+    }
+    .trade-row.kind-UNKNOWN .line1::before {
+      content: "?";
+      color: var(--ink-mute);
+      font-style: normal;
+    }
+    .trade-row .meta-row {
+      margin-top: 6px;
+    }
+
+    /* ------------------------------------------------------------ */
+    /*  Panel 3 — Inventory grid                                      */
+    /* ------------------------------------------------------------ */
+    .inventory-card {
+      padding: 18px 20px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 16px;
+      background: var(--paper-2);
+      transition: background 0.25s ease, border-color 0.25s ease;
+    }
+    .inventory-card.pulse {
+      background: var(--lime-dim);
+      border-color: var(--lime);
+    }
+    .inventory-card .card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .inventory-card .card-header .short {
+      font-family: "DM Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      color: var(--forest);
+      font-weight: 500;
+    }
+    .inventory-card .card-header .label {
+      font-family: "Fraunces", serif;
+      font-size: 14px;
+      color: var(--ink);
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .inventory-card .card-header .k-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .inventory-card.k-A .k-dot { background: var(--lime); }
+    .inventory-card.k-B .k-dot { background: var(--coral); }
+    .inventory-card.k-C .k-dot { background: var(--forest); }
+
+    .inventory-card .balances {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 4px 10px;
+      font-family: "DM Mono", monospace;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .inventory-card .balances .ing {
+      color: var(--ink-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 10px;
+      align-self: center;
+    }
+    .inventory-card .balances .val {
+      color: var(--ink);
+      text-align: right;
+      font-size: 13px;
+    }
+    .inventory-card .balances .val.zero { color: var(--ink-mute); }
+    .inventory-card .card-footer {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--border);
+    }
+
+    /* ------------------------------------------------------------ */
+    /*  Empty states                                                  */
+    /* ------------------------------------------------------------ */
+    .empty-state {
+      font-family: "Fraunces", serif;
+      font-size: 15px;
+      color: var(--ink-mute);
+      padding: 40px 0;
+      text-align: center;
+      font-style: italic;
+    }
+
+    /* ------------------------------------------------------------ */
+    /*  Responsive — collapse to stacked panels on narrow windows     */
+    /* ------------------------------------------------------------ */
+    @media (max-width: 1100px) {
+      main.grid {
+        grid-template-columns: 1fr;
+        grid-auto-rows: minmax(260px, auto);
+      }
+      section.panel {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      section.panel:last-child { border-bottom: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Peel <span style="font-family: 'DM Mono', monospace; font-size: 12px; color: var(--ink-dim); letter-spacing: 0.1em;">/ APP</span></h1>
+      <div class="subtitle">Three kitchens · one market · live from Hedera testnet</div>
+    </div>
+    <div class="meta">
+      <div><span class="dot" id="status-dot"></span><span id="status-text">connecting…</span></div>
+      <div id="updated-at" style="margin-top: 3px;">—</div>
+      <div id="poll-count" style="margin-top: 3px; opacity: 0.6;">—</div>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="panel" id="transcript-panel">
+      <div class="panel-header">Agent transcript · TRANSCRIPT_TOPIC</div>
+      <div class="panel-body" id="transcript-body">
+        <div class="empty-state">waiting for first reasoning…</div>
+      </div>
+    </section>
+
+    <section class="panel" id="trades-panel">
+      <div class="panel-header">Trade feed · MARKET_TOPIC</div>
+      <div class="panel-body" id="trades-body">
+        <div class="empty-state">waiting for first offer…</div>
+      </div>
+    </section>
+
+    <section class="panel" id="inventory-panel">
+      <div class="panel-header">Inventory · on-ledger balances</div>
+      <div class="panel-body" id="inventory-body"></div>
+    </section>
+  </main>
+
+  <script>
+    // ----------------------------------------------------------------
+    // Client polls /state every 3s. Mirror node is the source of truth.
+    // No SSE — simpler, idempotent, survives tab suspensions cleanly.
+    // ----------------------------------------------------------------
+    const POLL_MS = 3000;
+
+    const el = {
+      transcript: document.getElementById("transcript-body"),
+      trades: document.getElementById("trades-body"),
+      inventory: document.getElementById("inventory-body"),
+      updatedAt: document.getElementById("updated-at"),
+      pollCount: document.getElementById("poll-count"),
+      statusDot: document.getElementById("status-dot"),
+      statusText: document.getElementById("status-text"),
+    };
+
+    // Track seen sequence numbers so we only animate new rows, not the
+    // whole list on every poll. Inventory balances are diffed per-kitchen
+    // per-ingredient to trigger the pulse flash.
+    const seen = {
+      transcript: new Set(),
+      trades: new Set(),
+    };
+    const lastBalances = { A: null, B: null, C: null };
+
+    function esc(s) {
+      return String(s)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function fmtTs(consensusTimestamp) {
+      // Mirror node returns "1775951946.740174251" — seconds.nanos.
+      const secs = Number(String(consensusTimestamp).split(".")[0]);
+      if (!Number.isFinite(secs)) return "--:--:--";
+      const d = new Date(secs * 1000);
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      const ss = String(d.getSeconds()).padStart(2, "0");
+      return `${hh}:${mm}:${ss}`;
+    }
+
+    function fmtKg(n) {
+      if (!Number.isFinite(n)) return "—";
+      // Show as whole kg if integer-ish, else 3 decimals (3-decimal tokens).
+      const rounded = Math.round(n * 1000) / 1000;
+      return rounded.toFixed(rounded === Math.floor(rounded) ? 0 : 3);
+    }
+
+    function fmtHbar(n) {
+      if (!Number.isFinite(n)) return "—";
+      return (Math.round(n * 100) / 100).toFixed(2);
+    }
+
+    function kitchenChip(kitchenId, accountId) {
+      // EXTEND: derive short label from a richer kitchens map if the server
+      //         ever includes friendly names inside transcript rows. For
+      //         now the id letter + 0.0.X fallback is sufficient.
+      if (kitchenId === "A" || kitchenId === "B" || kitchenId === "C") {
+        return `<span class="chip k-${kitchenId}"><span class="dot"></span>K#${kitchenId}</span>`;
+      }
+      return `<span class="chip k-unknown"><span class="dot"></span>${esc(accountId || "?")}</span>`;
+    }
+
+    function hashscanBadge(url) {
+      if (!url) return "";
+      return `<a class="hashscan-badge" href="${esc(url)}" target="_blank" rel="noopener">↗ HashScan</a>`;
+    }
+
+    // ----------------------------------------------------------------
+    // Renderers — idempotent, whole-panel re-render on each poll. Cheap
+    // for the demo scale (≤100 rows per topic) and avoids the whole
+    // class of partial-update bugs.
+    // ----------------------------------------------------------------
+
+    function renderTranscript(rows) {
+      if (!rows || rows.length === 0) {
+        el.transcript.innerHTML =
+          '<div class="empty-state">waiting for first reasoning…</div>';
+        return;
+      }
+      // Newest first — mirror node returns asc, so reverse here.
+      const ordered = [...rows].reverse();
+      el.transcript.innerHTML = ordered
+        .map((row) => {
+          const isNew = !seen.transcript.has(row.seq);
+          seen.transcript.add(row.seq);
+          return `
+            <div class="transcript-entry${isNew ? " new" : ""}">
+              <div class="ts mono">${fmtTs(row.consensusTimestamp)}</div>
+              <div class="body">
+                <div class="kitchen-line">
+                  ${kitchenChip(row.kitchenId, row.kitchenAccountId)}
+                </div>
+                <div class="thought">${esc(row.thought)}</div>
+                <div class="meta-row">${hashscanBadge(row.hashscanUrl)}</div>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    function renderTrades(rows) {
+      if (!rows || rows.length === 0) {
+        el.trades.innerHTML =
+          '<div class="empty-state">waiting for first offer…</div>';
+        return;
+      }
+      const ordered = [...rows].reverse();
+      el.trades.innerHTML = ordered
+        .map((row) => {
+          seen.trades.add(row.seq);
+          const ts = fmtTs(row.consensusTimestamp);
+          let line1 = "";
+          switch (row.kind) {
+            case "OFFER": {
+              const from = kitchenChip(row.kitchenId, row.kitchenAccountId);
+              line1 = `
+                ${from}
+                <span class="arrow">→</span>
+                <span>OPEN</span>
+                <span>${fmtKg(row.qtyKg)} kg</span>
+                <span class="ingredient">${esc(row.ingredient)}</span>
+                <span class="price">@ ${fmtHbar(row.pricePerKgHbar)} ℏ/kg</span>
+              `;
+              break;
+            }
+            case "PROPOSAL": {
+              const from = kitchenChip(row.fromKitchenId, "");
+              const to = kitchenChip(row.toKitchenId, "");
+              line1 = `
+                ${from}
+                <span class="arrow">→</span>
+                ${to}
+                <span class="price">counter ${fmtHbar(row.counterPricePerKgHbar)} ℏ/kg</span>
+              `;
+              break;
+            }
+            case "TRADE_EXECUTED": {
+              const seller = kitchenChip(row.sellerKitchenId, "");
+              const buyer = kitchenChip(row.buyerKitchenId, "");
+              line1 = `
+                ${seller}
+                <span class="arrow">→</span>
+                ${buyer}
+                <span>${fmtKg(row.qtyKg)} kg</span>
+                <span class="ingredient">${esc(row.ingredient)}</span>
+                <span class="price">${fmtHbar(row.totalHbar)} ℏ</span>
+              `;
+              break;
+            }
+            case "UNKNOWN":
+            default: {
+              line1 = `<span>unknown envelope · ${esc(row.rawKind || row.kind)}</span>`;
+              break;
+            }
+          }
+          return `
+            <div class="trade-row kind-${esc(row.kind)}">
+              <div class="ts">${ts}</div>
+              <div class="body">
+                <div class="line1">${line1}</div>
+                <div class="meta-row">${hashscanBadge(row.hashscanUrl)}</div>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    function renderInventory(cards) {
+      if (!cards || cards.length === 0) {
+        el.inventory.innerHTML =
+          '<div class="empty-state">loading balances…</div>';
+        return;
+      }
+      el.inventory.innerHTML = cards
+        .map((card) => {
+          const prev = lastBalances[card.id];
+          const changed =
+            prev &&
+            (["RICE", "PASTA", "FLOUR", "OIL"]).some(
+              (ing) => prev[ing] !== card.balances[ing]
+            );
+          lastBalances[card.id] = { ...card.balances };
+          return `
+            <div class="inventory-card k-${esc(card.id)}${changed ? " pulse" : ""}" data-kid="${esc(card.id)}">
+              <div class="card-header">
+                <div class="k-dot"></div>
+                <div class="short mono">${esc(card.shortLabel)}</div>
+              </div>
+              <div style="font-family: Fraunces, serif; font-size: 13px; color: var(--ink-dim); margin: -8px 0 10px 0;">${esc(card.label)}</div>
+              <div class="balances">
+                ${(["RICE", "PASTA", "FLOUR", "OIL"])
+                  .map((ing) => {
+                    const v = card.balances[ing] || 0;
+                    const zeroCls = v === 0 ? " zero" : "";
+                    return `<div class="ing">${ing}</div><div class="val${zeroCls}">${fmtKg(v)} kg</div>`;
+                  })
+                  .join("")}
+              </div>
+              <div class="card-footer">
+                <a class="hashscan-badge" href="${esc(card.hashscanUrl)}" target="_blank" rel="noopener">↗ ${esc(card.accountId)}</a>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+      // Clear pulse class on the next frame — keeps the flash brief but
+      // visible. EXTEND: proper keyframe animation instead of class-toggle.
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          document
+            .querySelectorAll(".inventory-card.pulse")
+            .forEach((n) => n.classList.remove("pulse"));
+        }, 900);
+      });
+    }
+
+    function renderStatus(s) {
+      if (s.error) {
+        el.statusDot.classList.add("error");
+        el.statusText.textContent = "mirror node error";
+      } else {
+        el.statusDot.classList.remove("error");
+        el.statusText.textContent = "live · mirror node testnet";
+      }
+      const d = new Date(s.updatedAt);
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      const ss = String(d.getSeconds()).padStart(2, "0");
+      el.updatedAt.textContent = `updated ${hh}:${mm}:${ss}`;
+      el.pollCount.textContent = `poll #${s.pollCount}`;
+    }
+
+    async function poll() {
+      try {
+        const resp = await fetch("/state", { cache: "no-store" });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const snapshot = await resp.json();
+        renderStatus(snapshot);
+        renderTranscript(snapshot.transcript);
+        renderTrades(snapshot.trades);
+        renderInventory(snapshot.inventory);
+      } catch (err) {
+        el.statusDot.classList.add("error");
+        el.statusText.textContent = "viewer offline";
+        console.error("[h7] poll failed", err);
+      }
+    }
+
+    poll();
+    setInterval(poll, POLL_MS);
+  </script>
+</body>
+</html>
