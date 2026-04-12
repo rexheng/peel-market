@@ -47,10 +47,18 @@ import {
   createTools,
   type ToolContext,
   PostOfferInput,
+  ProposeTradeInput,
   PublishReasoningInput,
+  ScanMarketInput,
 } from "./tools.js";
-import { buildSystemPrompt, buildUserPrompt } from "./prompt.js";
+import {
+  buildScanSystemPrompt,
+  buildScanUserPrompt,
+  buildSystemPrompt,
+  buildUserPrompt,
+} from "./prompt.js";
 import type { EmitFn, KitchenId } from "./events.js";
+import type { Offer } from "@shared/types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -182,7 +190,13 @@ export class KitchenTraderAgent {
       perIngredient: surplus,
     });
 
-    // 4. Any breach?
+    const hashscanUrls: string[] = [];
+    let postedOffer = false;
+    let proposedTrade = false;
+
+    // 4. Any breach? If yes, run the H3 post-offer LLM phase. If no, skip
+    //    to the H4 scan phase (a kitchen with no surplus can still counter
+    //    peer offers).
     const picked = pickLargestSurplus(surplus);
     if (!picked) {
       emit({
@@ -190,22 +204,46 @@ export class KitchenTraderAgent {
         kitchen,
         reason: "no ingredient breaches surplus threshold",
       });
-      emit({ type: "tick.end", kitchen, action: "idle", hashscanUrls: [] });
-      return { action: "idle", hashscanUrls: [] };
+    } else {
+      emit({
+        type: "ingredient.selected",
+        kitchen,
+        ingredient: picked.ingredient,
+        surplusKg: picked.row.surplusKg,
+      });
+
+      await this.runPostOfferPhase(picked.ingredient, picked.row.surplusKg, hashscanUrls);
+      postedOffer = hashscanUrls.length >= 2;
     }
 
-    emit({
-      type: "ingredient.selected",
-      kitchen,
-      ingredient: picked.ingredient,
-      surplusKg: picked.row.surplusKg,
-    });
+    // 8. H4 scan phase — read MARKET_TOPIC for peer offers and optionally
+    //    propose a counter on ONE of them. Runs after the post-offer phase
+    //    so freshly-published offers from THIS kitchen are already on the
+    //    mirror node (filtered out by scanMarket's self-exclusion anyway).
+    proposedTrade = await this.runScanPhase(hashscanUrls);
 
-    // 5. Bind LLM tools — ONLY the two action tools. Inventory/forecast are
-    //    TS-only in H3. Each DynamicStructuredTool wraps the real tool body
-    //    and emits llm.tool_result on return.
-    const ingPolicy: IngredientPolicy = this.policy[picked.ingredient];
+    const action: "posted" | "idle" =
+      postedOffer || proposedTrade ? "posted" : "idle";
+    emit({ type: "tick.end", kitchen, action, hashscanUrls });
 
+    return { action, hashscanUrls };
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  H3 post-offer phase (extracted for clarity in tick())             */
+  /* ------------------------------------------------------------------ */
+
+  private async runPostOfferPhase(
+    ingredient: RawIngredient,
+    surplusKg: number,
+    hashscanUrls: string[]
+  ): Promise<void> {
+    const emit = this.ctx.emit;
+    const kitchen = this.kitchenId;
+    const ingPolicy: IngredientPolicy = this.policy[ingredient];
+
+    // Bind the H3 LLM tools. Each DynamicStructuredTool wraps the real
+    // tool body and emits llm.tool_result on return.
     const publishReasoningTool = new DynamicStructuredTool({
       name: "publishReasoning",
       description:
@@ -240,13 +278,12 @@ export class KitchenTraderAgent {
       },
     });
 
-    // 6. Build agent and prompt
     const systemPrompt = buildSystemPrompt(this.policy);
     const userPrompt = buildUserPrompt({
       kitchenId: this.kitchenId,
       kitchenName: this.policy.kitchenName,
-      ingredient: picked.ingredient,
-      surplusKg: picked.row.surplusKg,
+      ingredient,
+      surplusKg,
       policy: ingPolicy,
     });
 
@@ -264,22 +301,16 @@ export class KitchenTraderAgent {
       promptPreview: userPrompt.slice(0, 200),
     });
 
-    // 7. streamEvents — this is the canonical path for per-token streaming
-    //    in langchain 1.x. Each event is { event: "on_*", name, data }.
-    //    For token-level output we listen on "on_chat_model_stream" and
-    //    read data.chunk.content. For tool calls we listen on
-    //    "on_tool_start" / "on_tool_end".
-    //
-    //    EXTEND: full version handles on_chain_error with exponential
-    //    backoff retry via @langchain/openai gpt-4o-mini fallback.
-    const hashscanUrls: string[] = [];
+    // streamEvents — see H3 commentary for why v2 + on_chat_model_stream.
+    // EXTEND: full version handles on_chain_error with exponential
+    //         backoff retry via @langchain/openai gpt-4o-mini fallback.
     let fullText = "";
 
     try {
       const eventStream = agent.streamEvents(
         { messages: [{ role: "user", content: userPrompt }] },
         {
-          configurable: { thread_id: `${kitchen}-${Date.now()}` },
+          configurable: { thread_id: `${kitchen}-post-${Date.now()}` },
           recursionLimit: 8,
           version: "v2",
         }
@@ -287,7 +318,6 @@ export class KitchenTraderAgent {
 
       for await (const ev of eventStream) {
         if (ev.event === "on_chat_model_stream") {
-          // data.chunk is an AIMessageChunk; its .content is the token text
           const chunk: unknown = ev.data?.chunk;
           const content = extractContentText(chunk);
           if (content) {
@@ -296,7 +326,6 @@ export class KitchenTraderAgent {
           }
         } else if (ev.event === "on_tool_start") {
           const name = ev.name ?? "unknown";
-          // Filter out non-custom tools that langgraph might fire events for
           if (name === "publishReasoning" || name === "postOffer") {
             emit({
               type: "llm.tool_call",
@@ -306,9 +335,6 @@ export class KitchenTraderAgent {
             });
           }
         } else if (ev.event === "on_tool_end") {
-          // Harvest hashscan URLs from tool outputs for the tick.end summary.
-          // The custom tool's func() returns a JSON string; the langgraph
-          // event exposes it as data.output.
           const name = ev.name ?? "unknown";
           if (name === "publishReasoning" || name === "postOffer") {
             const output = ev.data?.output;
@@ -318,11 +344,9 @@ export class KitchenTraderAgent {
                 const parsed = JSON.parse(outputText) as {
                   hashscanUrl?: string;
                 };
-                if (parsed.hashscanUrl)
-                  hashscanUrls.push(parsed.hashscanUrl);
+                if (parsed.hashscanUrl) hashscanUrls.push(parsed.hashscanUrl);
               } catch {
-                /* ignore — the llm.tool_result emitted by the tool body
-                   already carries the structured result */
+                /* llm.tool_result already carries structured result */
               }
             }
           }
@@ -333,7 +357,7 @@ export class KitchenTraderAgent {
       emit({
         type: "tick.error",
         kitchen,
-        phase: "llm.stream",
+        phase: "llm.stream.post",
         error: errMsg,
       });
       emit({ type: "tick.end", kitchen, action: "idle", hashscanUrls });
@@ -341,12 +365,189 @@ export class KitchenTraderAgent {
     }
 
     emit({ type: "llm.done", kitchen, fullText });
+  }
 
-    const action: "posted" | "idle" =
-      hashscanUrls.length >= 2 ? "posted" : "idle";
-    emit({ type: "tick.end", kitchen, action, hashscanUrls });
+  /* ------------------------------------------------------------------ */
+  /*  H4 scan phase — scan MARKET_TOPIC, optionally propose one counter */
+  /* ------------------------------------------------------------------ */
 
-    return { action, hashscanUrls };
+  /**
+   * Returns true iff a PROPOSAL landed on MARKET_TOPIC during this phase.
+   *
+   * EXTEND: H6 will orchestrate multi-kitchen ticks so A's just-posted
+   *         offer is propagated to mirror node before B's scan runs.
+   *         H4 relies on the caller (run-h4-scan.ts) to sequence A's tick
+   *         before B's tick with a 4s mirror-node settle in between.
+   */
+  private async runScanPhase(hashscanUrls: string[]): Promise<boolean> {
+    const emit = this.ctx.emit;
+    const kitchen = this.kitchenId;
+
+    // 1. TS-side pre-scan — if no peer offers are visible, skip the LLM
+    //    invocation entirely. Saves tokens + avoids prompting the model
+    //    with an empty list.
+    let openOffers: Offer[];
+    try {
+      openOffers = await this.tools.scanMarket({});
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      emit({
+        type: "tick.error",
+        kitchen,
+        phase: "scan.fetch",
+        error: errMsg,
+      });
+      return false;
+    }
+
+    if (openOffers.length === 0) {
+      // scan.offers_found was already emitted with [] by the tool body.
+      return false;
+    }
+
+    // 2. Bind scan-phase LLM tools.
+    //    The scanMarket tool is re-exposed so the LLM records its own scan
+    //    call (even though we already have the offers in TS) — this keeps
+    //    the audit trail consistent with the prompt's "call scanMarket
+    //    EXACTLY ONCE" instruction.
+    //    EXTEND: full version could skip the LLM's redundant scan call by
+    //            injecting the offers into the prompt as a system-side
+    //            observation and binding only proposeTrade.
+    const scanMarketTool = new DynamicStructuredTool({
+      name: "scanMarket",
+      description:
+        "Read the MARKET topic on Hedera and return a list of open peer offers (excluding your own). Optional arg: ingredient (filter to one RAW_*). Call this EXACTLY ONCE.",
+      schema: ScanMarketInput,
+      func: async (args) => {
+        const offers = await this.tools.scanMarket(args);
+        emit({
+          type: "llm.tool_result",
+          kitchen,
+          name: "scanMarket",
+          result: { count: offers.length },
+        });
+        return JSON.stringify({ ok: true, offers });
+      },
+    });
+
+    const proposeTradeTool = new DynamicStructuredTool({
+      name: "proposeTrade",
+      description:
+        "Publish a PROPOSAL counter-offer to the MARKET topic on Hedera. Required args: offerId (from a scanMarket result), counterPricePerKgHbar (must be within your [floor, ceiling] policy range for that ingredient). Call this AT MOST ONCE.",
+      schema: ProposeTradeInput,
+      func: async (args) => {
+        const { proposalId, hashscanUrl } = await this.tools.proposeTrade(
+          args
+        );
+        emit({
+          type: "llm.tool_result",
+          kitchen,
+          name: "proposeTrade",
+          result: { proposalId, hashscanUrl },
+        });
+        return JSON.stringify({ ok: true, proposalId, hashscanUrl });
+      },
+    });
+
+    // 3. Build policies map for prompt (only the ingredients actually
+    //    appearing in openOffers, to keep the prompt small).
+    const policies = {} as Record<RawIngredient, IngredientPolicy>;
+    for (const o of openOffers) {
+      policies[o.ingredient] = this.policy[o.ingredient];
+    }
+
+    const systemPrompt = buildScanSystemPrompt(this.policy);
+    const userPrompt = buildScanUserPrompt({
+      kitchenId: this.kitchenId,
+      kitchenName: this.policy.kitchenName,
+      openOffers,
+      policies,
+    });
+
+    const agent = createAgent({
+      model: this.chatModel,
+      tools: [scanMarketTool, proposeTradeTool],
+      systemPrompt,
+      checkpointer: new MemorySaver(),
+    });
+
+    emit({
+      type: "llm.invoke",
+      kitchen,
+      model: this.modelName,
+      promptPreview: userPrompt.slice(0, 200),
+    });
+
+    let fullText = "";
+    let proposed = false;
+    const startUrlCount = hashscanUrls.length;
+
+    try {
+      const eventStream = agent.streamEvents(
+        { messages: [{ role: "user", content: userPrompt }] },
+        {
+          configurable: { thread_id: `${kitchen}-scan-${Date.now()}` },
+          recursionLimit: 8,
+          version: "v2",
+        }
+      );
+
+      for await (const ev of eventStream) {
+        if (ev.event === "on_chat_model_stream") {
+          const chunk: unknown = ev.data?.chunk;
+          const content = extractContentText(chunk);
+          if (content) {
+            fullText += content;
+            emit({ type: "llm.token", kitchen, text: content });
+          }
+        } else if (ev.event === "on_tool_start") {
+          const name = ev.name ?? "unknown";
+          if (name === "scanMarket" || name === "proposeTrade") {
+            emit({
+              type: "llm.tool_call",
+              kitchen,
+              name,
+              args: ev.data?.input ?? {},
+            });
+          }
+        } else if (ev.event === "on_tool_end") {
+          const name = ev.name ?? "unknown";
+          if (name === "proposeTrade") {
+            const output = ev.data?.output;
+            const outputText = extractToolOutputText(output);
+            if (outputText) {
+              try {
+                const parsed = JSON.parse(outputText) as {
+                  hashscanUrl?: string;
+                };
+                if (parsed.hashscanUrl) {
+                  hashscanUrls.push(parsed.hashscanUrl);
+                  proposed = true;
+                }
+              } catch {
+                /* proposal.sent event already fired by the tool body */
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      emit({
+        type: "tick.error",
+        kitchen,
+        phase: "llm.stream.scan",
+        error: errMsg,
+      });
+      // Don't rethrow — scan-phase failures are non-fatal to the tick.
+      // EXTEND: H6 supervisor layer decides whether this counts as a
+      //         tick failure or just a skipped scan.
+      return false;
+    }
+
+    emit({ type: "llm.done", kitchen, fullText });
+
+    return proposed || hashscanUrls.length > startUrlCount;
   }
 
   get name(): string {

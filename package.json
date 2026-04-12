@@ -8,6 +8,7 @@
     "h1:smoke": "tsx market/scripts/h1-smoke.ts",
     "h3:one-kitchen": "tsx market/scripts/run-one-kitchen.ts",
     "h3:viewer": "tsx market/viewer/server.ts",
+    "h4:scan": "tsx market/scripts/run-h4-scan.ts",
     "bootstrap:tokens": "tsx market/scripts/bootstrap-tokens.ts",
     "market:run": "tsx market/scripts/run-three-agents.ts",
     "market:serve": "npx http-server market -p 5173 -c-1",

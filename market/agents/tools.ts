@@ -31,9 +31,12 @@ import type { RawIngredient, TokenRegistry } from "@shared/hedera/tokens.js";
 import type { TopicRegistry } from "@shared/hedera/topics.js";
 import type { KitchenPolicy } from "@shared/types.js";
 import {
+  MarketMessage,
   OfferSchema,
+  ProposalSchema,
   TranscriptEntrySchema,
   type Offer,
+  type Proposal,
   type TranscriptEntry,
 } from "@shared/types.js";
 import type { EmitFn } from "./events.js";
@@ -323,17 +326,169 @@ export function createTools(ctx: ToolContext) {
       }
     },
 
-    /** Read MARKET_TOPIC history via mirror node, return open offers. */
-    async scanMarket(_args: z.infer<typeof ScanMarketInput>) {
-      // EXTEND: H4 reads MARKET_TOPIC history and dedupes open offers from
-      //         the mirror node's /topics/{id}/messages endpoint.
-      throw new Error("TODO H4: fetch + dedupe open offers from mirror node");
+    /**
+     * Read MARKET_TOPIC history via mirror node, return OPEN offers.
+     *
+     * "Open" for H4 means: parseable OFFER envelope, not expired
+     * (expiresAt in the future), and not authored by this kitchen.
+     *
+     * EXTEND: H5 will filter out OFFERs that have been settled by a
+     *         TRADE_EXECUTED envelope. The current TradeExecutedSchema
+     *         doesn't carry offerId — H5 extends either the schema
+     *         (shared/types.ts, must log) or correlates via the
+     *         PROPOSAL → TRADE_EXECUTED tradeId lineage.
+     */
+    async scanMarket(
+      args: z.infer<typeof ScanMarketInput>
+    ): Promise<Offer[]> {
+      ctx.emit({
+        type: "scan.started",
+        kitchen: ctx.kitchenId,
+        ingredient: args.ingredient,
+      });
+
+      const offers = await fetchOpenOffers(ctx);
+
+      // Self-offer exclusion.
+      let filtered = offers.filter(
+        (o) => o.kitchen !== ctx.kitchenAccountId
+      );
+
+      // Optional ingredient filter.
+      if (args.ingredient) {
+        filtered = filtered.filter((o) => o.ingredient === args.ingredient);
+      }
+
+      ctx.emit({
+        type: "scan.offers_found",
+        kitchen: ctx.kitchenId,
+        offers: filtered.map((o) => ({
+          offerId: o.offerId,
+          ingredient: o.ingredient,
+          kitchen: o.kitchen,
+          qtyKg: o.qtyKg,
+          pricePerKgHbar: o.pricePerKgHbar,
+        })),
+      });
+
+      return filtered;
     },
 
-    /** Send a PROPOSAL counter-offer to a specific peer. */
-    async proposeTrade(_args: z.infer<typeof ProposeTradeInput>) {
-      // EXTEND: H4 publishes PROPOSAL envelopes to MARKET_TOPIC.
-      throw new Error("TODO H4: publish PROPOSAL to MARKET_TOPIC");
+    /**
+     * Publish a PROPOSAL counter-offer to MARKET_TOPIC.
+     *
+     * Looks up the target offer by re-scanning MARKET_TOPIC. Validates
+     * `counterPricePerKgHbar` against THIS kitchen's policy for the
+     * offer's ingredient (same ±10% tolerance as postOffer). Builds
+     * the Proposal envelope per `shared/types.ts ProposalSchema`,
+     * zod-parses defensively, submits via direct SDK, and emits
+     * proposal.* + hcs.submit.* events for the viewer.
+     */
+    async proposeTrade(
+      args: z.infer<typeof ProposeTradeInput>
+    ): Promise<{ proposalId: string; hashscanUrl: string }> {
+      const { offerId, counterPricePerKgHbar } = args;
+
+      // 1. Look up offer via fresh scan (mirror node is ~3s stale — the
+      //    caller is responsible for having waited; H4 tick calls scan
+      //    first, then passes offerId to this tool).
+      const allOffers = await fetchOpenOffers(ctx);
+      const offer = allOffers.find((o) => o.offerId === offerId);
+      if (!offer) {
+        throw new Error(
+          `proposeTrade rejected: offerId ${offerId} not found among open offers on MARKET_TOPIC. ` +
+            `It may have expired or was never published.`
+        );
+      }
+      if (offer.kitchen === ctx.kitchenAccountId) {
+        throw new Error(
+          `proposeTrade rejected: offerId ${offerId} is authored by this kitchen. ` +
+            `Kitchens do not counter their own offers.`
+        );
+      }
+
+      // 2. Policy gate — validate the counter price against THIS kitchen's
+      //    policy for the offer's ingredient.
+      const ingPolicy = ctx.policy[offer.ingredient];
+      const floorWithTol = ingPolicy.floor_price_hbar_per_kg * 0.9;
+      const ceilingWithTol = ingPolicy.ceiling_price_hbar_per_kg * 1.1;
+      if (
+        counterPricePerKgHbar < floorWithTol ||
+        counterPricePerKgHbar > ceilingWithTol
+      ) {
+        throw new Error(
+          `proposeTrade rejected: counter price ${counterPricePerKgHbar} HBAR/kg outside policy range ` +
+            `[${ingPolicy.floor_price_hbar_per_kg}, ${ingPolicy.ceiling_price_hbar_per_kg}] for ${offer.ingredient}. ` +
+            `Please retry with a price inside the range.`
+        );
+      }
+
+      // 3. Build + validate Proposal envelope.
+      // EXTEND: demo uses uuid for proposalId; full version uses HCS
+      //         sequence number for deterministic ordering alongside offers.
+      const proposalId = `prop_${randomUUID().slice(0, 8)}`;
+      const envelope: Proposal = {
+        kind: "PROPOSAL",
+        proposalId,
+        offerId: offer.offerId,
+        fromKitchen: ctx.kitchenAccountId,
+        toKitchen: offer.kitchen,
+        counterPricePerKgHbar,
+      };
+      ProposalSchema.parse(envelope);
+
+      ctx.emit({
+        type: "proposal.drafted",
+        kitchen: ctx.kitchenId,
+        proposal: envelope,
+      });
+      ctx.emit({
+        type: "hcs.submit.request",
+        kitchen: ctx.kitchenId,
+        topic: "MARKET",
+        envelope,
+      });
+
+      // 4. Submit to MARKET_TOPIC.
+      try {
+        const tx = await new TopicMessageSubmitTransaction()
+          .setTopicId(ctx.topics.MARKET_TOPIC)
+          .setMessage(JSON.stringify(envelope))
+          .execute(ctx.client);
+        const receipt = await tx.getReceipt(ctx.client);
+        if (receipt.status.toString() !== "SUCCESS") {
+          throw new Error(
+            `MARKET submit returned ${receipt.status.toString()}`
+          );
+        }
+        const txId = tx.transactionId.toString();
+        const url = hashscan.tx(txId);
+
+        ctx.emit({
+          type: "hcs.submit.success",
+          kitchen: ctx.kitchenId,
+          topic: "MARKET",
+          txId,
+          hashscanUrl: url,
+        });
+        ctx.emit({
+          type: "proposal.sent",
+          kitchen: ctx.kitchenId,
+          proposalId,
+          hashscanUrl: url,
+        });
+
+        return { proposalId, hashscanUrl: url };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        ctx.emit({
+          type: "hcs.submit.failure",
+          kitchen: ctx.kitchenId,
+          topic: "MARKET",
+          error: msg,
+        });
+        throw err;
+      }
     },
 
     /** Execute HTS transfer + HBAR payment and publish TRADE_EXECUTED. */
@@ -411,3 +566,56 @@ export function createTools(ctx: ToolContext) {
 }
 
 export type KitchenTraderTools = ReturnType<typeof createTools>;
+
+/* ------------------------------------------------------------------ */
+/*  H4 internal — walk MARKET_TOPIC, return parseable non-expired     */
+/*  OFFER envelopes. Shared by scanMarket + proposeTrade so both      */
+/*  agree on which offers are "open" at the same instant.             */
+/* ------------------------------------------------------------------ */
+
+async function fetchOpenOffers(ctx: ToolContext): Promise<Offer[]> {
+  const url = `${ctx.mirrorNode}/api/v1/topics/${ctx.topics.MARKET_TOPIC}/messages?order=asc&limit=100`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error(
+      `scanMarket: mirror node returned ${resp.status} ${resp.statusText}`
+    );
+  }
+  const body = (await resp.json()) as {
+    messages?: Array<{ message: string }>;
+  };
+
+  const now = Date.now();
+  const offers: Offer[] = [];
+
+  for (const m of body.messages ?? []) {
+    // EXTEND: demo scans from index 0 every call — full version keeps a
+    //         cursor on the last-seen consensus timestamp so the walk
+    //         scales past the 100-message page limit.
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(
+        Buffer.from(m.message, "base64").toString("utf8")
+      );
+    } catch {
+      // malformed JSON — skip silently (old test messages, etc.)
+      continue;
+    }
+    const result = MarketMessage.safeParse(parsed);
+    if (!result.success) continue;
+    if (result.data.kind !== "OFFER") continue;
+
+    const offer = result.data;
+    // Expiry filter — skip offers whose expiresAt is in the past.
+    const expiresMs = Date.parse(offer.expiresAt);
+    if (!Number.isNaN(expiresMs) && expiresMs <= now) continue;
+
+    // EXTEND: H5 will also filter OFFERs that have been settled by a
+    //         TRADE_EXECUTED envelope. H4 ships before any TRADE_EXECUTED
+    //         envelopes exist on MARKET_TOPIC, so this is a no-op until H5.
+
+    offers.push(offer);
+  }
+
+  return offers;
+}
