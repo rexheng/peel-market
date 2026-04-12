@@ -15,6 +15,7 @@
 
 import type { ServerResponse } from "node:http";
 import type { RawIngredient } from "@shared/hedera/tokens.js";
+import type { Proposal } from "@shared/types.js";
 
 export type KitchenId = "A" | "B" | "C";
 
@@ -95,7 +96,27 @@ export type TraderEvent =
       error: string;
     }
   // Errors
-  | { type: "tick.error"; kitchen: KitchenId; phase: string; error: string };
+  | { type: "tick.error"; kitchen: KitchenId; phase: string; error: string }
+  // Added in H4:
+  | { type: "scan.started"; kitchen: KitchenId; ingredient?: RawIngredient }
+  | {
+      type: "scan.offers_found";
+      kitchen: KitchenId;
+      offers: Array<{
+        offerId: string;
+        ingredient: RawIngredient;
+        kitchen: string;
+        qtyKg: number;
+        pricePerKgHbar: number;
+      }>;
+    }
+  | { type: "proposal.drafted"; kitchen: KitchenId; proposal: Proposal }
+  | {
+      type: "proposal.sent";
+      kitchen: KitchenId;
+      proposalId: string;
+      hashscanUrl: string;
+    };
 
 export type EmitFn = (event: TraderEvent) => void;
 
@@ -327,6 +348,47 @@ export function consoleSink(kitchenId: KitchenId): EmitFn {
         console.log(
           `${prefix()}${ANSI.red}✗ tick.error · phase=${event.phase} · ${
             event.error
+          }${ANSI.reset}`
+        );
+        break;
+      }
+      // Added in H4:
+      case "scan.started": {
+        lineBreakIfStreaming();
+        const filter = event.ingredient ? ` (${event.ingredient})` : "";
+        console.log(`${prefix()}· scanning market${filter}`);
+        break;
+      }
+      case "scan.offers_found": {
+        lineBreakIfStreaming();
+        console.log(
+          `${prefix()}· found ${event.offers.length} open offer(s)`
+        );
+        for (const o of event.offers) {
+          console.log(
+            `           ${ANSI.bold}${o.ingredient.padEnd(6)}${
+              ANSI.reset
+            } ${o.qtyKg.toFixed(1).padStart(6)} kg @ ${o.pricePerKgHbar.toFixed(
+              3
+            )} HBAR/kg  ${ANSI.dim}${o.offerId} from ${o.kitchen}${ANSI.reset}`
+          );
+        }
+        break;
+      }
+      case "proposal.drafted": {
+        lineBreakIfStreaming();
+        console.log(
+          `${prefix()}⚙ drafted proposal · counter ${event.proposal.counterPricePerKgHbar.toFixed(
+            3
+          )} HBAR/kg on ${ANSI.dim}${event.proposal.offerId}${ANSI.reset}`
+        );
+        break;
+      }
+      case "proposal.sent": {
+        lineBreakIfStreaming();
+        console.log(
+          `${prefix()}↗ PROPOSAL ${event.proposalId} · ${ANSI.cyan}${
+            event.hashscanUrl
           }${ANSI.reset}`
         );
         break;
