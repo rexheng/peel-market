@@ -1,22 +1,34 @@
 /**
- * H7 app server — three-panel live viewer for Peel.
+ * H8 app server — live map viewer for Peel (upgraded from H7 three-panel).
  *
- * This is deliberately separate from H3's viewer/server.ts. H3 drives a single
- * kitchen tick with an SSE stream wired into the agent's emit bus. H7 reads
- * nothing from an agent — it reads mirror node directly, so the UI works
- * whether or not a supervisor is running. The only moving parts are:
+ * Originally (H7) this served a single three-panel UI at GET / that read
+ * mirror node directly. H8 demotes that to /panels as a debugging surface
+ * and introduces a new hero view at / — a Mapbox map with the three
+ * kitchens pinned to their real London locations, plus a global transcript
+ * drawer.
  *
- *   1. On boot, load generated-accounts.json + kitchen-{A,B,C}.json policies
- *      to build a tiny KITCHENS map (accountId → {id, label, color}).
- *   2. Every 3s, poll mirror node for:
- *        - last 100 messages on TRANSCRIPT_TOPIC   (REASONING envelopes)
- *        - last 100 messages on MARKET_TOPIC       (OFFER/PROPOSAL/TRADE_EXECUTED)
- *        - each of 3 accounts' token balances     (RICE/PASTA/FLOUR/OIL in kg)
- *      Cache the aggregated snapshot in memory.
- *   3. Serve:
- *        GET /          → app.html
- *        GET /state     → latest snapshot JSON
- *        GET /health    → { ok: true, updatedAt, pollCount }
+ * Data flow is unchanged: mirror node polled every 3s, snapshot cached in
+ * memory, UI re-renders from /state. What changed:
+ *   - Kitchen identity is enriched via shared/hedera/kitchen-profiles.json
+ *     (displayName, branch, tagline, cuisine, lat/lng, accent) loaded at
+ *     boot alongside the existing generated-* files.
+ *   - /state is privacy-clean: no inventory, no HBAR balance, no forecast.
+ *     The public map viewer only sees envelopes the kitchens themselves
+ *     chose to publish on-chain (OFFER / PROPOSAL / TRADE_EXECUTED /
+ *     REASONING). Internal pantry state never leaves this process for the
+ *     public endpoint.
+ *   - /state/debug retains the full snapshot including inventory so the
+ *     H7 /panels view keeps working as a debugging surface.
+ *   - Routes:
+ *        GET /              → app.html    (live map viewer)
+ *        GET /panels        → app-panels.html  (H7 three-panel, debug)
+ *        GET /state         → public JSON (no inventory)
+ *        GET /state/debug   → full JSON (with inventory)
+ *        GET /health        → { ok, updatedAt, pollCount }
+ *   - MAPBOX_TOKEN is read from process.env at boot and injected into
+ *     app.html at request time via __MAPBOX_TOKEN__ placeholder. The
+ *     token is a public pk. token designed to embed in the browser, but
+ *     keeping it out of git lets it rotate cleanly when rotated upstream.
  *
  * The client polls /state every 3s and re-renders. No SSE, no framework, no
  * build step. Mirror node is the single source of truth; every beat on screen
@@ -52,6 +64,7 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_HTML_PATH = resolve(__dirname, "app.html");
+const PANELS_HTML_PATH = resolve(__dirname, "app-panels.html");
 const REPO_ROOT = resolve(__dirname, "../..");
 
 const PORT = Number(process.env.APP_PORT ?? 3001);
@@ -59,6 +72,13 @@ const MIRROR_NODE =
   process.env.HEDERA_MIRROR_NODE_URL ?? "https://testnet.mirrornode.hedera.com";
 const POLL_INTERVAL_MS = 3000;
 const TOPIC_MESSAGE_LIMIT = 100;
+const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN ?? "";
+if (!MAPBOX_TOKEN) {
+  console.warn(
+    "[h8] MAPBOX_TOKEN is not set — the / route will render a broken map. " +
+      "Add it to .env before running the demo."
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  Boot: load kitchens + tokens + topics from generated JSON         */
@@ -90,6 +110,27 @@ interface GeneratedTopics {
   TRANSCRIPT_TOPIC: string;
 }
 
+// H8: loaded from shared/hedera/kitchen-profiles.json. Identity layer for
+// the map viewer — real London restaurant brand per kitchen, hand-curated.
+interface KitchenProfile {
+  accountId: string;
+  displayName: string;
+  branch: string;
+  tagline: string;
+  cuisine: string;
+  addressLine: string;
+  postcode: string;
+  lat: number;
+  lng: number;
+  accent: string;
+}
+
+interface GeneratedProfiles {
+  A: KitchenProfile;
+  B: KitchenProfile;
+  C: KitchenProfile;
+}
+
 function readJson<T>(relPath: string): T {
   const abs = resolve(REPO_ROOT, relPath);
   return JSON.parse(readFileSync(abs, "utf8")) as T;
@@ -103,6 +144,9 @@ const tokens = readJson<GeneratedTokens>(
 );
 const topics = readJson<GeneratedTopics>(
   "shared/hedera/generated-topics.json"
+);
+const profiles = readJson<GeneratedProfiles>(
+  "shared/hedera/kitchen-profiles.json"
 );
 
 // Policies carry the human-readable kitchen names. Account IDs come from
@@ -275,12 +319,41 @@ interface Snapshot {
   pollCount: number;
   transcript: TranscriptRow[];
   trades: TradeRow[];
+  // H8: inventory is kept in memory for /state/debug (→ /panels) but is
+  // STRIPPED from the public /state response. Restaurants don't want
+  // competitors scraping their pantry state in real time.
   inventory: InventoryCard[];
+  // H8: new public fields for the map viewer.
+  kitchenProfiles: GeneratedProfiles;
+  tradesSettledToday: number;
   topics: {
     MARKET_TOPIC: string;
     TRANSCRIPT_TOPIC: string;
   };
   error: string | null;
+}
+
+// Strip inventory + any other internal-only fields before sending to / clients.
+// /state/debug returns the full snapshot for /panels debugging.
+function publicSnapshot(s: Snapshot): Omit<Snapshot, "inventory"> {
+  const { inventory: _inventory, ...rest } = s;
+  return rest;
+}
+
+// Count TRADE_EXECUTED envelopes whose consensus_timestamp is >= UTC midnight
+// of the current day. consensus_timestamp is a seconds.nanos string from the
+// mirror node; we parseFloat and compare.
+function countTradesSettledToday(trades: TradeRow[]): number {
+  const now = new Date();
+  const utcMidnightSec =
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 1000;
+  let count = 0;
+  for (const t of trades) {
+    if (t.kind !== "TRADE_EXECUTED") continue;
+    const consensus = parseFloat(t.consensusTimestamp);
+    if (Number.isFinite(consensus) && consensus >= utcMidnightSec) count++;
+  }
+  return count;
 }
 
 let snapshot: Snapshot = {
@@ -297,6 +370,8 @@ let snapshot: Snapshot = {
     hashscanUrl: hashscanAccount(k.accountId),
     balances: { RICE: 0, PASTA: 0, FLOUR: 0, OIL: 0 },
   })),
+  kitchenProfiles: profiles,
+  tradesSettledToday: 0,
   topics: {
     MARKET_TOPIC: topics.MARKET_TOPIC,
     TRANSCRIPT_TOPIC: topics.TRANSCRIPT_TOPIC,
@@ -465,6 +540,8 @@ async function refreshSnapshot(): Promise<void> {
       transcript,
       trades,
       inventory,
+      kitchenProfiles: profiles,
+      tradesSettledToday: countTradesSettledToday(trades),
       topics: snapshot.topics,
       error: null,
     };
@@ -487,9 +564,13 @@ const server = http.createServer((req, res) => {
   const url = req.url ?? "/";
   const method = req.method ?? "GET";
 
+  // Root: serve app.html with the mapbox token injected. Keeping the
+  // placeholder replacement server-side means the token never ends up in
+  // git and rotates cleanly when the operator rotates it in .env.
   if (method === "GET" && (url === "/" || url === "/index.html")) {
     try {
-      const html = readFileSync(APP_HTML_PATH, "utf8");
+      const raw = readFileSync(APP_HTML_PATH, "utf8");
+      const html = raw.replace(/__MAPBOX_TOKEN__/g, MAPBOX_TOKEN);
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store",
@@ -502,7 +583,36 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // /panels: the H7 three-panel viewer, demoted to a fallback debugging
+  // surface. It polls /state/debug which still carries inventory.
+  if (method === "GET" && url === "/panels") {
+    try {
+      const html = readFileSync(PANELS_HTML_PATH, "utf8");
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
+      res.end(html);
+    } catch (err) {
+      res.writeHead(500);
+      res.end(`app-panels.html read failed: ${(err as Error).message}`);
+    }
+    return;
+  }
+
+  // Public snapshot — no inventory, no pantry leakage.
   if (method === "GET" && url === "/state") {
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(JSON.stringify(publicSnapshot(snapshot)));
+    return;
+  }
+
+  // Debug snapshot — includes inventory, used by /panels only.
+  if (method === "GET" && url === "/state/debug") {
     res.writeHead(200, {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
@@ -519,6 +629,7 @@ const server = http.createServer((req, res) => {
         ok: true,
         updatedAt: snapshot.updatedAt,
         pollCount: snapshot.pollCount,
+        tradesSettledToday: snapshot.tradesSettledToday,
         error: snapshot.error,
       })
     );
@@ -534,10 +645,14 @@ const server = http.createServer((req, res) => {
 /* ------------------------------------------------------------------ */
 
 server.listen(PORT, () => {
-  console.log(`[h7] app viewer ready → http://localhost:${PORT}`);
-  console.log(`[h7] mirror node       → ${MIRROR_NODE}`);
+  console.log(`[h8] map viewer     → http://localhost:${PORT}/`);
+  console.log(`[h8] panels (debug) → http://localhost:${PORT}/panels`);
+  console.log(`[h8] mirror node    → ${MIRROR_NODE}`);
   console.log(
-    `[h7] polling every ${POLL_INTERVAL_MS}ms · TRANSCRIPT ${topics.TRANSCRIPT_TOPIC} · MARKET ${topics.MARKET_TOPIC}`
+    `[h8] polling every ${POLL_INTERVAL_MS}ms · TRANSCRIPT ${topics.TRANSCRIPT_TOPIC} · MARKET ${topics.MARKET_TOPIC}`
+  );
+  console.log(
+    `[h8] kitchens       → A=${profiles.A.displayName} B=${profiles.B.displayName} C=${profiles.C.displayName}`
   );
   // Kick off immediately, then on an interval.
   void refreshSnapshot();
