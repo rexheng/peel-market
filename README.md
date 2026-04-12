@@ -4,7 +4,7 @@
 
 **Hedera Agentic Society Hackathon · 11–12 April 2026** · [Live Demo](https://peel-market.vercel.app/market) · [Landing Page](https://peel-market.vercel.app)
 
-![Peel Live Map Viewer — three London kitchens trading on Hedera testnet](h8-c4-dishoom-live.png)
+![Peel Live Map Viewer — three London kitchens trading on Hedera testnet](vercel-market-live.png)
 
 ---
 
@@ -181,7 +181,7 @@ The viewer polls `/state` every 3s. The `/state` endpoint is privacy-clean: no i
 
 | Map overview | Kitchen popup (Dishoom) |
 |:---:|:---:|
-| ![Map view](h8-c4-live.png) | ![Dishoom popup](h8-c4-dishoom-live.png) |
+| ![Map view](vercel-market-live.png) | ![Dishoom popup](h8-c4-dishoom-live.png) |
 
 ## Tech Stack
 
