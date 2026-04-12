@@ -143,3 +143,164 @@ Read from `../peel-programme/tasks/todo.md` at 2026-04-11:
 ## Review
 
 _(Fill after H1 ships.)_
+
+## Overnight session report (2026-04-12 UTC)
+
+Session window: 2026-04-12 01:50–03:40 UTC approx. Branch: `market`.
+Entered at HEAD 7bfa6e3 (H5 acceptTrade code-complete, testnet-deferred).
+Exited at HEAD d5acd63 (H8 map viewer, all four commits). Five feature
+commits landed; one state-repair npm install (no package.json edit).
+
+### H8 map viewer — SHIPPED ✓
+
+All four commits merged to `market`:
+
+  39d6416  H8 C1 — kitchen-profiles.json (Dishoom / Pret Borough / Wagamama Covent Garden)
+  d4573e4  H8 C2 — static mockup (app-mockup.html)
+  739099b  H8 C3 — app-server.ts /state privacy split + /panels fallback + MAPBOX_TOKEN injection
+  d5acd63  H8 C4 — app.html wired to /state poll, topbar + drawer + popup refresh
+
+Open the viewer:
+  `APP_PORT=3001 npm run h7:app`
+  → http://localhost:3001/          (live London map, hero view)
+  → http://localhost:3001/panels    (H7 three-panel debug view)
+  → http://localhost:3001/state     (public JSON, privacy-clean)
+  → http://localhost:3001/state/debug  (full JSON with inventory, for /panels)
+
+What Rex should see on the map viewer:
+  - Peel wordmark + "LIVE · THREE AGENTS · TESTNET" kicker on a cream paper topbar
+  - "N trades settled today · updated HH:MM:SS UTC" live meta on the right
+  - Mapbox light-v11 London map with three rounded-pill pins at the real
+    restaurant locations (Shoreditch / Borough High St / Covent Garden)
+  - Click any pin to open a popup card with:
+      · accent-striped header (Fraunces name + branch/postcode + tagline)
+      · Open offers (max 3 rows, each with a HashScan chip, "+N more" overflow)
+      · Trade network SVG (this kitchen as filled center, other two as
+        outlined satellites, edges labeled with aggregate flow + HS chip,
+        dim-dashed edges for lanes with no trades yet)
+      · Recent settlements (max 3 rows, newest first, with HS chips)
+  - Bottom drawer: global reasoning tape across all three kitchens,
+    color-coded by accent, Fraunces-serif thoughts, mono timestamps
+
+Known rough edges:
+  - "Open offers" shows the N most recent OFFER envelopes from the kitchen
+    regardless of settlement status. A true "open" filter needs the server
+    to surface offerId on OFFER rows so settled ones can be stripped.
+    EXTEND marker in market/viewer/app.html (C4 inline comment).
+  - Favicon 404 in browser DevTools. Harmless.
+  - There is no live websocket — polling is 3s. On a slow link you'll see
+    a ~3s delay between a trade landing and the popup auto-refreshing.
+
+Privacy constraint verified: /state returns no `inventory` key; /state/debug
+does. The map viewer never queries /state/debug. /panels queries only /state/debug.
+
+### Priority 2 — H5 testnet verification — BLOCKED (Groq TPD)
+
+Status: NOT verified. Partial progress captured below.
+
+**Code review completed.** Read through:
+  - market/agents/keys.ts           (clean — DER detection, ECDSA fallback)
+  - market/agents/tools.ts acceptTrade body lines 517–747 (clean — dual
+    signing order, base-unit math, idempotency via settled{Offer,Proposal}Ids,
+    atomic TransferTransaction, TRADE_EXECUTED commit with both offerId +
+    proposalId)
+  - market/agents/tools.ts findMatchedProposalsForKitchen lines 942–976
+    (clean — filters by toKitchen + offer authorship + expiry + settlement)
+  - market/agents/kitchen-trader.ts runSettlePhase lines 582–785 (clean —
+    LLM tool wiring, error-isolated via return-false, hashscan URL harvest
+    from tool-end events)
+
+Two minor nits found, not worth fixing:
+  (1) Buyer HBAR preflight adds +1_000_000 tinybar "fees headroom", but
+      TransferTransaction fees are paid by the operator (seller), not the
+      buyer. The check is over-conservative but harmless at 10 HBAR seed
+      funding. Leave it.
+  (2) `await new TransferTransaction()...freezeWith(ctx.client)` — the
+      await on a synchronous method is unnecessary. Harmless.
+
+**State-repair before run:** `npm install` restored ~66 missing transitive
+packages (including @cfworker/json-schema, a direct dep of @langchain/core
+that wasn't present). This is the same partial-wipe failure mode the prior
+session hit (see Blockers section above). Root cause remains unknown — this
+worktree's node_modules degrades between sessions. Didn't touch package.json
+or package-lock.json. No commit — node_modules is gitignored.
+
+**Run attempt:** `npm run h5:trade` at 03:32 UTC.
+
+What worked on testnet before the 429:
+  - Kitchen A tick 1 post-offer phase → published a new OFFER envelope
+    Offer:      https://hashscan.io/testnet/transaction/0.0.8598874-1775961135-645644551
+    Reasoning:  https://hashscan.io/testnet/transaction/0.0.8598874-1775961133-701865665
+  - Kitchen A tick 1 scan phase → drafted and published a PROPOSAL
+    counter-bidding on a peer's open offer (off_c2fda0cf) at 0.75 HBAR/kg
+    PROPOSAL prop_d5735e70:
+    https://hashscan.io/testnet/transaction/0.0.8598874-1775961140-327067761
+  - Kitchen A tick 1 settle phase → findMatchedProposalsForKitchen
+    successfully matched an existing proposal (prop_eadf730d) from
+    0.0.8598877 for 20.0 kg RICE @ 0.810 HBAR/kg, and the LLM invocation
+    began (log: "◆ reasoning · llama-3.3-70b-versatile").
+
+Failure:
+  - The scan-phase LLM call 429'd:
+    "Rate limit reached for model `llama-3.3-70b-versatile` ... on tokens
+     per day (TPD): Limit 100000, Used 99732, Requested 1651. Please try
+     again in 19m54.912s."
+  - The settle-phase LLM call 429'd:
+    "Used 99608, Requested 1164. Try again in 11m7s."
+  - Kitchen B tick 2 also 429'd on its first LLM call.
+  - Script crashed with an unhandled GraphRecursionError wrapping the 429.
+
+**Critical finding about Groq TPD behavior:** the briefing assumed TPD
+resets "at UTC midnight". That is incorrect for the `on_demand` free tier
+on llama-3.3-70b-versatile. Observed behavior: the retry-after header is
+a rolling countdown (`retry-after: 551` seconds ≈ 9 minutes from the last
+error; earlier errors showed 19 minutes). Groq tracks token usage over a
+rolling 24-hour window, not a calendar day. So the quota never "reset at
+midnight UTC" — it had been ratcheting down as old usage aged out of the
+window. The window should naturally open up in the morning without me
+doing anything, but there is no single "reset moment".
+
+**No H5 code change made.** H5 remains code-complete, testnet-unverified.
+The acceptTrade body has NEVER been exercised against real Hedera testnet
+state. When Rex has LLM tokens available, re-run is just `npm run h5:trade`.
+
+### Priority 3 — H6 three-kitchen integration — SKIPPED (blocked by same)
+
+H6 requires three kitchens each running multiple ticks, which multiplies
+the Groq token spend. Attempting it now would only pile more 429s on top.
+Deferred entirely. Re-run in the morning is:
+  `MAX_CYCLES=3 MARKET_TICK_MS=30000 npm run h6:three-kitchen`
+
+### Outstanding work for Rex in the morning
+
+1. **Wait for Groq rolling window to open** — check current headroom with
+   a single `npm run h3:one-kitchen` which consumes ~1.5K tokens. If that
+   succeeds, there's enough budget for h5:trade (~6K tokens).
+2. **Run `npm run h5:trade`** (no code changes needed) and capture the
+   TRADE_EXECUTED HashScan URL from the terminal banner. That is the
+   first actual H5 proof point.
+3. **Run `MAX_CYCLES=3 MARKET_TICK_MS=30000 npm run h6:three-kitchen`**
+   and capture any TRADE_EXECUTED envelopes that land during the 3-minute
+   window.
+4. **Optional but nice:** boot `npm run h7:app` and open `/` in a browser
+   while H6 runs — the map viewer's popup card should auto-refresh to
+   show the newly-landed trades in real time (3s polling). This is the
+   visceral demo-ready beat.
+5. **Investigate the node_modules partial-wipe root cause.** Twice in two
+   sessions now, a clean-looking install has silently lost a chunk of
+   transitive packages between sessions. Candidate causes: Windows file-
+   system shenanigans, parallel Terminal 2 operations, antivirus, pnpm
+   symlink confusion. This is not a blocker — `npm install` recovers —
+   but it's worth rooting out before the demo.
+
+### Tokens consumed (rough)
+
+Groq:   ~99.7K TPD budget used by end of session (at quota ceiling).
+        Of that, this session likely added ~2–4K on tick 1 (post-offer)
+        before hitting 429; the bulk (~95K) was already in the 24h window
+        from earlier today's H3/H4 verification runs.
+
+HBAR:   Kitchen A submitted 3 successful tx's during the tick 1 partial
+        run (OFFER, REASONING, PROPOSAL envelopes). At ~50k tinybars
+        each, that's ~0.0015 HBAR spent. Well within the 10 HBAR seed.
+        No TRADE_EXECUTED ran — no transfer fees charged.
