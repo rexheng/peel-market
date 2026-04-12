@@ -1,0 +1,38 @@
+{
+  "A": {
+    "accountId": "0.0.8598874",
+    "displayName": "Dishoom",
+    "branch": "Shoreditch",
+    "tagline": "Bombay comfort food, all day",
+    "cuisine": "Indian",
+    "addressLine": "7 Boundary St",
+    "postcode": "London E2 7JE",
+    "lat": 51.5253,
+    "lng": -0.0766,
+    "accent": "#A8D66B"
+  },
+  "B": {
+    "accountId": "0.0.8598877",
+    "displayName": "Pret a Manger",
+    "branch": "Borough High St",
+    "tagline": "Fresh sandwiches, made daily",
+    "cuisine": "Café / deli",
+    "addressLine": "15 Borough High St",
+    "postcode": "London SE1 9SE",
+    "lat": 51.5043,
+    "lng": -0.0909,
+    "accent": "#F4A39A"
+  },
+  "C": {
+    "accountId": "0.0.8598879",
+    "displayName": "Wagamama",
+    "branch": "Covent Garden",
+    "tagline": "Ramen, katsu & donburi",
+    "cuisine": "Japanese",
+    "addressLine": "1a Tavistock St",
+    "postcode": "London WC2E 7PG",
+    "lat": 51.5117,
+    "lng": -0.1225,
+    "accent": "#5E8C6A"
+  }
+}
