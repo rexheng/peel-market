@@ -13,3 +13,5 @@ coverage/
 # Local Hedera state (keys, cached token IDs after bootstrap)
 shared/hedera/generated-*.json
 .hedera-local
+
+.vercel
