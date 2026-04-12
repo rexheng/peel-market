@@ -74,8 +74,24 @@ a { color: inherit; text-decoration: none; }
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .hdr .status .crosslink:hover { background: var(--paper-2); border-color: var(--lime-deep); color: var(--forest); }
-.hdr .dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: var(--lime-hot); margin-right: 0.35rem; vertical-align: middle; animation: pulse 1.6s infinite; }
+.hdr .dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: var(--lime-hot); margin-right: 0.35rem; vertical-align: middle; animation: pulse 1.6s infinite; transition: background-color 200ms ease; }
+.hdr .dot.dot--error { background: var(--coral); }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.hdr .resync {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.55rem;
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: var(--forest-3);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  background: transparent;
+  transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
+}
+.hdr .resync:hover { color: var(--forest); border-color: var(--line); background: var(--paper-2); }
+.hdr .resync:focus-visible { outline: 2px solid var(--lime-deep); outline-offset: 1px; }
 
 /* ------- 3-column grid ------- */
 .grid {
@@ -388,8 +404,9 @@ a { color: inherit; text-decoration: none; }
     <div class="brand">Peel <em>food credits</em></div>
     <div class="status">
       <a class="crosslink" href="/market" title="Switch to the Peel Food Market dashboard">← food market</a>
-      <span><span class="dot"></span>mirror node · testnet</span>
+      <span><span id="pulse-dot" class="dot"></span>mirror node · testnet</span>
       <span id="tick-status" class="mono">idle</span>
+      <button id="resync" type="button" class="resync" title="Drop cached events and re-fetch the topic from scratch">re-sync</button>
     </div>
   </header>
 
@@ -450,14 +467,40 @@ a { color: inherit; text-decoration: none; }
 const MIRROR = "https://testnet.mirrornode.hedera.com";
 const NETWORK = "testnet";
 const POLL_MS = 3000;
+// Backoff ladder for mirror-node poll failures. The last rung IS the cap —
+// once consecutiveFailures walks past the end of the ladder, schedulePoll()
+// clamps to the final rung so the viewer keeps retrying forever, just slowly.
+// Reset to POLL_MS on any successful poll.
+const BACKOFF_STEPS_MS = [1000, 2000, 4000, 8000, 16000, 30000];
+// Staleness threshold: if the current time is more than STALE_MULT * POLL_MS
+// past our last successful sync, the tick-status line says so instead of
+// pretending the cache is current.
+const STALE_MULT = 2;
 
 // EXTEND: consolidate topic+token IDs into a committed non-secret
 // shared/hedera/public-registry.json when market's viewer needs the
 // same pattern. For now, these are hardcoded from the gitignored
 // shared/hedera/generated-programme.json (topic + token are public;
 // only the operator/kitchen keys are sensitive).
-const PROGRAMME_TOPIC = "0.0.8598980";
+const DEFAULT_PROGRAMME_TOPIC = "0.0.8598980";
 const REDUCTION_CREDIT = "0.0.8598981";
+
+// Query-param override: `?topic=0.0.X` lets us repoint the viewer at a
+// different programme topic without a redeploy. Anything not matching the
+// canonical Hedera ID shape falls back silently — we never want a malformed
+// param to 500 the whole page.
+const TOPIC_ID_RE = /^0\.0\.\d+$/;
+function resolveProgrammeTopic() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const override = params.get("topic");
+    if (override && TOPIC_ID_RE.test(override)) return override;
+  } catch {
+    /* SSR / no window — fall back to default */
+  }
+  return DEFAULT_PROGRAMME_TOPIC;
+}
+const PROGRAMME_TOPIC = resolveProgrammeTopic();
 
 const KITCHENS = {
   A: "0.0.8598914",
@@ -489,8 +532,13 @@ const state = {
   byPeriod: new Map(), // periodEnd -> { periodEnd, invoices: [], closes: Map(kitchen->entry), ranking: entry|null }
   seenSeq: new Set(),
   ordered: [], // all envelopes sorted by sequence_number ascending
-  lastUpdateAt: null,
+  lastUpdateAt: null,   // last time we attempted a poll (success or fail)
+  lastSuccessAt: null,  // last time a poll succeeded end-to-end
   lastError: null,
+  skippedCount: 0,      // envelopes we saw but couldn't decode (malformed JSON, missing kind)
+  retryDelay: POLL_MS,  // ms until next schedulePoll tick — POLL_MS on success, BACKOFF_STEPS_MS[k] on failure
+  consecutiveFailures: 0, // walks up BACKOFF_STEPS_MS on each failed poll, reset to 0 on success
+  pollTimer: null,      // handle for the next scheduled poll, so resync() can cancel it
 };
 
 function ensurePeriod(periodEnd) {
@@ -558,63 +606,200 @@ function kitchenLetter(label) {
 
 /* ---------- mirror polling ---------- */
 
-async function poll() {
+function setErrorDot(on) {
+  const dot = document.getElementById("pulse-dot");
+  if (!dot) return;
+  dot.classList.toggle("dot--error", Boolean(on));
+}
+
+/**
+ * Render the tick-status line. Centralized so every code path that changes
+ * state (successful poll, failed poll, in-flight poll, re-sync) converges on
+ * one formatter instead of reinventing copy in five places.
+ *
+ * Copy rules:
+ *   - during an in-flight fetch we show "polling…" to give the viewer a
+ *     sign that something is happening
+ *   - after a success, we show the event count + unparseable count + clock
+ *   - after a failure, we show the error AND — if we had a prior success —
+ *     how stale the cached data is now ("last synced Xs ago · retrying")
+ */
+function updateTickStatus(phase, errText) {
   const tick = document.getElementById("tick-status");
-  try {
+  if (!tick) return;
+
+  if (phase === "polling") {
     tick.textContent = "polling…";
-    const url = `${MIRROR}/api/v1/topics/${PROGRAMME_TOPIC}/messages?limit=100&order=asc`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`mirror ${res.status}`);
-    const { messages = [] } = await res.json();
+    return;
+  }
 
-    let newCount = 0;
-    for (const m of messages) {
-      if (state.seenSeq.has(m.sequence_number)) continue;
+  // Core event count suffix used on both success and (where applicable) failure.
+  const skipSuffix = state.skippedCount > 0
+    ? ` · ${state.skippedCount} unparseable`
+    : "";
+  const countPart = `${state.ordered.length} events verified${skipSuffix}`;
 
-      let payload;
-      try {
-        payload = JSON.parse(atob(m.message));
-      } catch {
-        continue;
-      }
-      if (!payload || typeof payload !== "object" || !payload.kind) continue;
+  if (phase === "success" && state.lastSuccessAt) {
+    tick.textContent = `${countPart} · ${formatClock(state.lastSuccessAt)}`;
+    return;
+  }
 
-      state.seenSeq.add(m.sequence_number);
-      const entry = {
-        seq: m.sequence_number,
-        consensusTimestamp: m.consensus_timestamp,
-        submitter:
-          m.chunk_info?.initial_transaction_id?.account_id ??
-          m.payer_account_id,
-        validStart:
-          m.chunk_info?.initial_transaction_id?.transaction_valid_start ??
-          m.consensus_timestamp,
-        payload,
-      };
-      state.ordered.push(entry);
-      newCount++;
+  if (phase === "error") {
+    // If we never managed a successful sync, show the raw error.
+    if (!state.lastSuccessAt) {
+      tick.textContent = `error · ${errText ?? state.lastError ?? "unknown"}`;
+      return;
+    }
+    // Otherwise: quantify how stale the cache now is.
+    const staleMs = Date.now() - state.lastSuccessAt.getTime();
+    if (staleMs > STALE_MULT * POLL_MS) {
+      const secs = Math.floor(staleMs / 1000);
+      tick.textContent = `${countPart} · last synced ${secs}s ago · retrying`;
+    } else {
+      tick.textContent = `${countPart} · ${formatClock(state.lastSuccessAt)} · retrying`;
+    }
+    return;
+  }
 
-      const p = ensurePeriod(periodFor(entry));
-      if (payload.kind === "INVOICE_INGEST") {
-        p.invoices.push(entry);
-      } else if (payload.kind === "PERIOD_CLOSE") {
-        p.closes.set(payload.kitchen, entry);
-      } else if (payload.kind === "RANKING_RESULT") {
-        p.ranking = entry;
-      }
+  // Idle / unknown phase — show whatever we know.
+  tick.textContent = state.lastSuccessAt
+    ? `${countPart} · ${formatClock(state.lastSuccessAt)}`
+    : "idle";
+}
+
+/**
+ * Fetch the topic and fold new messages into state. Exceptions propagate;
+ * the caller (schedulePoll) is responsible for deciding what to do next.
+ */
+async function poll() {
+  updateTickStatus("polling");
+
+  const url = `${MIRROR}/api/v1/topics/${PROGRAMME_TOPIC}/messages?limit=100&order=asc`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`mirror ${res.status}`);
+  const { messages = [] } = await res.json();
+
+  let newCount = 0;
+  for (const m of messages) {
+    if (state.seenSeq.has(m.sequence_number)) continue;
+
+    let payload;
+    try {
+      payload = JSON.parse(atob(m.message));
+    } catch {
+      state.skippedCount++;
+      continue;
+    }
+    if (!payload || typeof payload !== "object" || !payload.kind) {
+      state.skippedCount++;
+      continue;
     }
 
-    state.ordered.sort((a, b) => a.seq - b.seq);
+    state.seenSeq.add(m.sequence_number);
+    const entry = {
+      seq: m.sequence_number,
+      consensusTimestamp: m.consensus_timestamp,
+      submitter:
+        m.chunk_info?.initial_transaction_id?.account_id ??
+        m.payer_account_id,
+      validStart:
+        m.chunk_info?.initial_transaction_id?.transaction_valid_start ??
+        m.consensus_timestamp,
+      payload,
+    };
+    state.ordered.push(entry);
+    newCount++;
+
+    const p = ensurePeriod(periodFor(entry));
+    if (payload.kind === "INVOICE_INGEST") {
+      p.invoices.push(entry);
+    } else if (payload.kind === "PERIOD_CLOSE") {
+      p.closes.set(payload.kitchen, entry);
+    } else if (payload.kind === "RANKING_RESULT") {
+      p.ranking = entry;
+    }
+  }
+
+  state.ordered.sort((a, b) => a.seq - b.seq);
+  return { newCount };
+}
+
+/**
+ * Wrap `poll` with scheduling, retry, and status-line updates. We use a
+ * recursive setTimeout rather than setInterval so a still-in-flight request
+ * never overlaps with the next one and so backoff is a natural fit.
+ *
+ * On success: reset retryDelay to POLL_MS, clear consecutiveFailures, update
+ * lastSuccessAt, drop the coral error dot, render any new events.
+ * On failure: step consecutiveFailures up by one and index into
+ * BACKOFF_STEPS_MS. Clamps to the last rung (30s) once the ladder is
+ * exhausted, paints the error dot, surfaces the error + staleness in the
+ * tick-status.
+ */
+async function schedulePoll() {
+  try {
+    const { newCount } = await poll();
+
     state.lastUpdateAt = new Date();
+    state.lastSuccessAt = new Date();
     state.lastError = null;
+    state.retryDelay = POLL_MS;
+    state.consecutiveFailures = 0;
+    setErrorDot(false);
 
     if (newCount > 0 || state.ordered.length > 0) render();
-    tick.textContent = `${state.ordered.length} events verified · ${formatClock(state.lastUpdateAt)}`;
+    updateTickStatus("success");
   } catch (err) {
+    state.lastUpdateAt = new Date();
     state.lastError = String(err);
-    tick.textContent = `error · ${state.lastError}`;
+    setErrorDot(true);
+
+    // Walk the backoff ladder. Index 0 on first failure (1s), clamped to the
+    // final rung (30s) once consecutiveFailures exceeds the ladder length.
+    state.consecutiveFailures++;
+    const rung = Math.min(
+      state.consecutiveFailures - 1,
+      BACKOFF_STEPS_MS.length - 1
+    );
+    state.retryDelay = BACKOFF_STEPS_MS[rung];
+
+    updateTickStatus("error", state.lastError);
     console.error("poll error", err);
   }
+
+  // Always queue the next poll — even failed ones, just at a longer delay.
+  state.pollTimer = window.setTimeout(schedulePoll, state.retryDelay);
+}
+
+/**
+ * Nuke cached state and re-fetch the topic from scratch. Useful for drift
+ * recovery after a long-running open tab, or when pointing the viewer at a
+ * different topic via the ?topic= override. Cancels any scheduled poll first
+ * so we don't race with the in-flight tick.
+ */
+function resync() {
+  if (state.pollTimer !== null) {
+    window.clearTimeout(state.pollTimer);
+    state.pollTimer = null;
+  }
+  state.byPeriod.clear();
+  state.seenSeq.clear();
+  state.ordered.length = 0;
+  state.skippedCount = 0;
+  state.lastUpdateAt = null;
+  state.lastSuccessAt = null;
+  state.lastError = null;
+  state.retryDelay = POLL_MS;
+  state.consecutiveFailures = 0;
+  setErrorDot(false);
+
+  // Repaint the panels to their empty state so the viewer sees the drop.
+  for (const id of ["kitchens", "ledger", "regulator"]) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = "";
+  }
+  render();
+  schedulePoll();
 }
 
 function formatClock(d) {
@@ -935,8 +1120,9 @@ function renderRegulator() {
 
 /* ---------- bootstrap ---------- */
 
-poll();
-setInterval(poll, POLL_MS);
+const resyncButton = document.getElementById("resync");
+if (resyncButton) resyncButton.addEventListener("click", resync);
+schedulePoll();
 </script>
 </body>
 </html>
