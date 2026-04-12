@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Peel · Live · Three Kitchens on Hedera</title>
+  <title>Peel · Live Exchange · Hedera</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!--
     H8 Commit 3 — the live map viewer, served at GET / by app-server.ts.
@@ -144,7 +144,7 @@
     /*  Map                                                          */
     /* ------------------------------------------------------------ */
     #map {
-      flex: 0 0 65vh;
+      flex: 0 0 clamp(300px, 55vh, 600px);
       width: 100%;
       background: var(--paper-2);
       position: relative;
@@ -416,11 +416,237 @@
     }
 
     /* ------------------------------------------------------------ */
+    /*  Peripheral (non-active) restaurant pins                      */
+    /* ------------------------------------------------------------ */
+    .pin.peripheral {
+      padding: 4px 10px 4px 7px;
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--ink-mute);
+      border-color: var(--border);
+      opacity: 0.7;
+      pointer-events: auto;
+    }
+    .pin.peripheral .dot {
+      width: 7px;
+      height: 7px;
+      background: var(--border-2);
+    }
+    .pin.peripheral:hover {
+      opacity: 1;
+      transform: translateY(-1px);
+    }
+
+    /* ------------------------------------------------------------ */
+    /*  Trade arc overlay (animated lines between trading kitchens)   */
+    /* ------------------------------------------------------------ */
+    .trade-arc {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .trade-arc line {
+      stroke-dasharray: 8 6;
+      stroke-linecap: round;
+      animation: arc-flow 1.2s linear infinite;
+    }
+    @keyframes arc-flow {
+      to { stroke-dashoffset: -28; }
+    }
+    .trade-arc.fading {
+      opacity: 0;
+      transition: opacity 3s ease-out;
+    }
+
+    /* ------------------------------------------------------------ */
+    /*  Activity feed entries (replaces plain transcript)             */
+    /* ------------------------------------------------------------ */
+    .activity-entry {
+      display: grid;
+      grid-template-columns: 90px 1fr;
+      gap: 14px;
+      padding: 10px 0;
+      border-bottom: 1px dashed var(--border);
+      align-items: flex-start;
+    }
+    .activity-entry:last-child { border-bottom: none; }
+    .activity-entry .ts-col {
+      font-family: "DM Mono", monospace;
+      font-size: 10px;
+      color: var(--ink-mute);
+      padding-top: 3px;
+      letter-spacing: 0.02em;
+    }
+    .activity-entry .body-col { min-width: 0; }
+    .activity-entry .who {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: "DM Mono", monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ink-dim);
+      margin-bottom: 3px;
+    }
+    .activity-entry .who .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .activity-entry.k-A .who .dot { background: var(--k-a); }
+    .activity-entry.k-B .who .dot { background: var(--k-b); }
+    .activity-entry.k-C .who .dot { background: var(--k-c); }
+    .activity-entry .action {
+      font-family: "DM Sans", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+      color: var(--ink);
+    }
+    .activity-entry .action .ingredient {
+      font-family: "DM Mono", monospace;
+      font-size: 12px;
+      color: var(--forest);
+      background: var(--lime-dim);
+      padding: 1px 6px;
+      border-radius: 3px;
+    }
+    .activity-entry .action .amount {
+      font-family: "DM Mono", monospace;
+      font-weight: 500;
+    }
+    .activity-entry .action .arrow {
+      color: var(--ink-dim);
+      margin: 0 2px;
+    }
+    .activity-entry .action .counterparty {
+      font-weight: 500;
+    }
+    .activity-entry.kind-TRADE_EXECUTED .action {
+      color: var(--forest-2);
+      font-weight: 500;
+    }
+    .activity-entry.kind-REASONING .action {
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--ink-dim);
+      font-style: italic;
+      max-width: 72ch;
+    }
+    .activity-entry .meta-row {
+      margin-top: 4px;
+    }
+
+    /* ------------------------------------------------------------ */
+    /*  Main layout: sidebar + content                               */
+    /* ------------------------------------------------------------ */
+    .main-layout {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .sidebar {
+      width: 280px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      background: var(--paper);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sidebar-header {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid var(--border);
+      font-family: "DM Mono", monospace;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--ink-mute);
+    }
+    .sidebar-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+    .sidebar-body::-webkit-scrollbar { width: 6px; }
+    .sidebar-body::-webkit-scrollbar-track { background: transparent; }
+    .sidebar-body::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
+
+    .sidebar-section-label {
+      padding: 14px 20px 6px;
+      font-family: "DM Mono", monospace;
+      font-size: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--ink-mute);
+    }
+
+    .kitchen-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      cursor: pointer;
+      transition: background 0.12s ease;
+      border-left: 3px solid transparent;
+    }
+    .kitchen-item:hover { background: var(--paper-2); }
+    .kitchen-item.active { border-left-color: var(--lime); background: var(--paper-2); }
+    .kitchen-item .k-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .kitchen-item.active .k-dot {
+      box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px currentColor;
+    }
+    .kitchen-item .k-info { min-width: 0; flex: 1; }
+    .kitchen-item .k-name {
+      font-family: "DM Sans", sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .kitchen-item .k-branch {
+      font-family: "DM Mono", monospace;
+      font-size: 9px;
+      color: var(--ink-mute);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .kitchen-item .k-status {
+      font-family: "DM Mono", monospace;
+      font-size: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      flex-shrink: 0;
+    }
+    .kitchen-item .k-status.live { color: var(--forest); }
+    .kitchen-item .k-status.pending { color: var(--ink-mute); }
+
+    .content-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    /* ------------------------------------------------------------ */
     /*  Transcript drawer                                            */
     /* ------------------------------------------------------------ */
     .drawer {
       flex: 1;
-      min-height: 0;
+      min-height: 180px;
       display: flex;
       flex-direction: column;
       border-top: 1px solid var(--border);
@@ -497,10 +723,10 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">
+    <a class="brand" href="/home" style="text-decoration:none;color:inherit;">
       <h1>Peel</h1>
-      <div class="subtitle">live · three agents · testnet</div>
-    </div>
+      <div class="subtitle">live · food credit exchange · testnet</div>
+    </a>
     <div class="meta">
       <span class="live"><span class="dot"></span><span class="label">connecting</span></span>
       <span id="trades-today">· trades today</span>
@@ -508,17 +734,26 @@
     </div>
   </header>
 
-  <div id="map"></div>
-
-  <section class="drawer">
-    <div class="drawer-header">
-      <span>Agent reasoning · transcript topic</span>
-      <span>3 kitchens</span>
+  <div class="main-layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">Kitchens on Peel</div>
+      <div class="sidebar-body" id="sidebar-body">
+        <!-- populated by renderSidebar() -->
+      </div>
+    </aside>
+    <div class="content-col">
+      <div id="map"></div>
+      <section class="drawer">
+        <div class="drawer-header">
+          <span>Activity feed · live exchange</span>
+          <span id="active-count">3 active kitchens</span>
+        </div>
+        <div class="drawer-body" id="drawer-body">
+          <!-- populated from /state + simulation -->
+        </div>
+      </section>
     </div>
-    <div class="drawer-body" id="drawer-body">
-      <!-- populated from MOCK.transcript -->
-    </div>
-  </section>
+  </div>
 
   <script>
     /* ===============================================================
@@ -794,43 +1029,119 @@
     }
 
     /* ===============================================================
-       TRANSCRIPT DRAWER
+       ACTIVITY FEED — merges trades + transcript into one exchange log
        =============================================================== */
-    function renderDrawer() {
-      const el = document.getElementById("drawer-body");
-      if (!el) return;
-      // Newest first. Server returns transcript in consensus order (asc)
-      // so we sort by seq DESC to put the latest thought at the top.
-      const ordered = STATE.transcript.slice().sort((a, b) => b.seq - a.seq);
-      if (!ordered.length) {
-        el.innerHTML = `<div style="color: var(--ink-mute); font-style: italic; padding: 18px 0;">No reasoning published yet — agents are booting or idle</div>`;
-        return;
-      }
-      el.innerHTML = ordered.map(entry => {
-        const kid = entry.kitchenId;
-        const profile = kid ? STATE.kitchenProfiles[kid] : null;
-        const ts = relTimeFromTs(entry.consensusTimestamp);
-        if (!profile) {
+    function profileName(kid) {
+      const p = kid ? STATE.kitchenProfiles[kid] : null;
+      return p ? p.displayName : "unknown";
+    }
+
+    function renderActivityEntry(item) {
+      const ts = relTimeFromTs(item.consensusTimestamp);
+
+      switch (item._feedKind) {
+        case "OFFER": {
+          const kid = item.kitchenId;
+          const name = profileName(kid);
           return `
-            <div class="thought-entry">
+            <div class="activity-entry kind-OFFER k-${kid || ""}">
               <div class="ts-col">${ts}</div>
               <div class="body-col">
-                <div class="who"><span class="dot" style="background: var(--ink-mute);"></span>unknown kitchen</div>
-                <div class="thought">${escapeHtml(entry.thought)}</div>
+                <div class="who"><span class="dot"></span>${escapeHtml(name)}</div>
+                <div class="action">
+                  Posted <span class="amount">${item.qtyKg} kg</span>
+                  <span class="ingredient">${escapeHtml(item.ingredient)}</span>
+                  @ <span class="amount">${item.pricePerKgHbar.toFixed(2)} h/kg</span>
+                </div>
+                <div class="meta-row"><a class="hs-chip" href="${escapeHtml(item.hashscanUrl)}" target="_blank" rel="noopener">&#8599; HS</a></div>
               </div>
             </div>
           `;
         }
-        return `
-          <div class="thought-entry k-${kid}">
-            <div class="ts-col">${ts}</div>
-            <div class="body-col">
-              <div class="who"><span class="dot"></span>${escapeHtml(profile.displayName)} · ${escapeHtml(profile.branch)}</div>
-              <div class="thought">${escapeHtml(entry.thought)}</div>
+        case "PROPOSAL": {
+          const fromName = profileName(item.fromKitchenId);
+          const toName = profileName(item.toKitchenId);
+          return `
+            <div class="activity-entry kind-PROPOSAL k-${item.fromKitchenId || ""}">
+              <div class="ts-col">${ts}</div>
+              <div class="body-col">
+                <div class="who"><span class="dot"></span>${escapeHtml(fromName)}</div>
+                <div class="action">
+                  Countered <span class="counterparty">${escapeHtml(toName)}</span>
+                  @ <span class="amount">${item.counterPricePerKgHbar.toFixed(2)} h/kg</span>
+                </div>
+                <div class="meta-row"><a class="hs-chip" href="${escapeHtml(item.hashscanUrl)}" target="_blank" rel="noopener">&#8599; HS</a></div>
+              </div>
             </div>
-          </div>
-        `;
-      }).join("");
+          `;
+        }
+        case "TRADE_EXECUTED": {
+          const sellerName = profileName(item.sellerKitchenId);
+          const buyerName = profileName(item.buyerKitchenId);
+          return `
+            <div class="activity-entry kind-TRADE_EXECUTED k-${item.sellerKitchenId || ""}">
+              <div class="ts-col">${ts}</div>
+              <div class="body-col">
+                <div class="who"><span class="dot"></span>Trade settled</div>
+                <div class="action">
+                  <span class="amount">${item.qtyKg} kg</span>
+                  <span class="ingredient">${escapeHtml(item.ingredient)}</span>
+                  <span class="counterparty">${escapeHtml(sellerName)}</span>
+                  <span class="arrow">&rarr;</span>
+                  <span class="counterparty">${escapeHtml(buyerName)}</span>
+                  &middot; <span class="amount">${item.totalHbar.toFixed(2)} h</span>
+                </div>
+                <div class="meta-row"><a class="hs-chip" href="${escapeHtml(item.hashscanUrl)}" target="_blank" rel="noopener">&#8599; HS</a></div>
+              </div>
+            </div>
+          `;
+        }
+        case "REASONING": {
+          const kid = item.kitchenId;
+          const name = profileName(kid);
+          const profile = kid ? STATE.kitchenProfiles[kid] : null;
+          const branch = profile ? profile.branch : "";
+          return `
+            <div class="activity-entry kind-REASONING k-${kid || ""}">
+              <div class="ts-col">${ts}</div>
+              <div class="body-col">
+                <div class="who"><span class="dot"></span>${escapeHtml(name)}${branch ? " &middot; " + escapeHtml(branch) : ""}</div>
+                <div class="action">${escapeHtml(item.thought)}</div>
+              </div>
+            </div>
+          `;
+        }
+        default:
+          return "";
+      }
+    }
+
+    function renderDrawer() {
+      const el = document.getElementById("drawer-body");
+      if (!el) return;
+
+      // Merge trades + transcript into a single feed, sorted by consensus time.
+      const feed = [];
+      for (const t of STATE.trades) {
+        feed.push(Object.assign({ _feedKind: t.kind }, t));
+      }
+      for (const t of STATE.transcript) {
+        feed.push(Object.assign({ _feedKind: "REASONING" }, t));
+      }
+      // Sort newest first by consensus timestamp (string comparison works for
+      // mirror node's seconds.nanos format).
+      feed.sort((a, b) => {
+        const ta = parseFloat(a.consensusTimestamp) || 0;
+        const tb = parseFloat(b.consensusTimestamp) || 0;
+        return tb - ta;
+      });
+
+      if (!feed.length) {
+        el.innerHTML = `<div style="color: var(--ink-mute); font-style: italic; padding: 18px 0;">Waiting for kitchen activity&hellip;</div>`;
+        return;
+      }
+
+      el.innerHTML = feed.map(renderActivityEntry).join("");
     }
 
     /* ===============================================================
@@ -953,6 +1264,341 @@
     }
 
     /* ===============================================================
+       PERIPHERAL RESTAURANTS — visual fill for the map
+       ===============================================================
+       These are real London restaurants placed at approximate coords.
+       They have no wallets, no data — purely visual to make the map
+       feel like a real marketplace network. */
+    let peripheralMarkersAdded = false;
+
+    function addPeripheralMarkers() {
+      if (peripheralMarkersAdded) return;
+      peripheralMarkersAdded = true;
+      for (const r of ONBOARDING_KITCHENS) {
+        const el = document.createElement("div");
+        el.className = "pin peripheral";
+        el.innerHTML = `<span class="dot"></span><span class="name">${escapeHtml(r.name)}</span>`;
+
+        const popup = new mapboxgl.Popup({
+          offset: 14,
+          closeButton: true,
+          closeOnClick: true,
+          maxWidth: "260px"
+        }).setHTML(`
+          <div style="padding: 14px 16px; font-family: 'DM Sans', sans-serif;">
+            <div style="font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; margin-bottom: 4px;">${escapeHtml(r.name)}</div>
+            <div style="font-family: 'DM Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-dim);">${escapeHtml(r.branch)} · ${escapeHtml(r.cuisine)}</div>
+            <div style="margin-top: 10px; font-size: 12px; color: var(--ink-mute); font-style: italic;">Joining the Peel network</div>
+          </div>
+        `);
+
+        new mapboxgl.Marker({ element: el, anchor: "bottom" })
+          .setLngLat([r.lng, r.lat])
+          .setPopup(popup)
+          .addTo(map);
+      }
+    }
+
+    /* ===============================================================
+       TRADE ARCS — animated lines between kitchens on recent trades
+       =============================================================== */
+    const renderedArcs = new Set();  // track by trade seq to avoid duplicates
+
+    function renderTradeArcs() {
+      const WINDOW_MS = 5 * 60 * 1000;
+      const nowMs = Date.now();
+
+      for (const t of STATE.trades) {
+        if (t.kind !== "TRADE_EXECUTED") continue;
+        if (renderedArcs.has(t.seq)) continue;
+
+        const sec = parseFloat(t.consensusTimestamp);
+        if (!Number.isFinite(sec) || nowMs - sec * 1000 > WINDOW_MS) continue;
+
+        const sellerProfile = t.sellerKitchenId ? STATE.kitchenProfiles[t.sellerKitchenId] : null;
+        const buyerProfile = t.buyerKitchenId ? STATE.kitchenProfiles[t.buyerKitchenId] : null;
+        if (!sellerProfile || !buyerProfile) continue;
+
+        renderedArcs.add(t.seq);
+
+        // Project kitchen lat/lng to map pixel coordinates and draw an SVG
+        // overlay line. The SVG sits absolutely inside #map.
+        const from = map.project([sellerProfile.lng, sellerProfile.lat]);
+        const to = map.project([buyerProfile.lng, buyerProfile.lat]);
+
+        const svgNs = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(svgNs, "svg");
+        svg.classList.add("trade-arc");
+        svg.setAttribute("viewBox", `0 0 ${map.getCanvas().width / window.devicePixelRatio} ${map.getCanvas().height / window.devicePixelRatio}`);
+        svg.style.position = "absolute";
+        svg.style.top = "0";
+        svg.style.left = "0";
+        svg.style.width = "100%";
+        svg.style.height = "100%";
+        svg.style.pointerEvents = "none";
+        svg.style.zIndex = "5";
+
+        const line = document.createElementNS(svgNs, "line");
+        line.setAttribute("x1", from.x);
+        line.setAttribute("y1", from.y);
+        line.setAttribute("x2", to.x);
+        line.setAttribute("y2", to.y);
+        line.setAttribute("stroke", sellerProfile.accent);
+        line.setAttribute("stroke-width", "2.5");
+        line.setAttribute("stroke-opacity", "0.7");
+        svg.appendChild(line);
+
+        document.getElementById("map").appendChild(svg);
+
+        // Fade out after 4 seconds, remove after 7
+        setTimeout(() => svg.classList.add("fading"), 4000);
+        setTimeout(() => svg.remove(), 7000);
+      }
+    }
+
+    /* ===============================================================
+       EXPANDED KITCHEN REGISTRY — all restaurants on the Peel network
+       =============================================================== */
+    const ALL_KITCHENS = [
+      // Active kitchens (have Hedera accounts, trading live)
+      { id: "A", name: "Dishoom",        branch: "Shoreditch",      cuisine: "Indian",           accent: "#A8D66B", lat: 51.5253, lng: -0.0766, status: "live" },
+      { id: "B", name: "Pret a Manger",  branch: "Borough High St", cuisine: "Cafe / deli",      accent: "#F4A39A", lat: 51.5043, lng: -0.0909, status: "live" },
+      { id: "C", name: "Wagamama",       branch: "Covent Garden",   cuisine: "Japanese",         accent: "#5E8C6A", lat: 51.5117, lng: -0.1225, status: "live" },
+      // Onboarding kitchens (visible, will join the network)
+      { id: "D", name: "Nando's",        branch: "Camden",          cuisine: "Peri-peri chicken", accent: "#E85D4A", lat: 51.5392, lng: -0.1426, status: "onboarding" },
+      { id: "E", name: "Eat Tokyo",      branch: "Clerkenwell",     cuisine: "Japanese",         accent: "#D4A574", lat: 51.5230, lng: -0.1050, status: "onboarding" },
+      { id: "F", name: "Wasabi",         branch: "Liverpool St",    cuisine: "Japanese fast",    accent: "#8BC34A", lat: 51.5180, lng: -0.0810, status: "onboarding" },
+      { id: "G", name: "Honest Burgers", branch: "Brixton",         cuisine: "Burgers",          accent: "#C19A6B", lat: 51.4613, lng: -0.1145, status: "onboarding" },
+      { id: "H", name: "Flat Iron",      branch: "Shoreditch",      cuisine: "Steak",            accent: "#B8584B", lat: 51.5246, lng: -0.0810, status: "onboarding" },
+      { id: "I", name: "GAIL's",         branch: "Hackney",         cuisine: "Bakery & brunch",  accent: "#DEB887", lat: 51.5465, lng: -0.0553, status: "onboarding" },
+      { id: "J", name: "Padella",        branch: "Borough",         cuisine: "Fresh pasta",      accent: "#E8C170", lat: 51.5055, lng: -0.0920, status: "onboarding" },
+      { id: "K", name: "Bao",            branch: "Soho",            cuisine: "Taiwanese",        accent: "#D4A39A", lat: 51.5133, lng: -0.1320, status: "onboarding" },
+      { id: "L", name: "Leon",           branch: "Spitalfields",    cuisine: "Healthy fast",     accent: "#F5C518", lat: 51.5183, lng: -0.0757, status: "onboarding" },
+      { id: "M", name: "The Palomar",    branch: "Soho",            cuisine: "Jerusalem grill",  accent: "#7B9EA8", lat: 51.5115, lng: -0.1345, status: "onboarding" },
+      { id: "N", name: "Franco Manca",   branch: "Brixton",         cuisine: "Sourdough pizza",  accent: "#E07B54", lat: 51.4617, lng: -0.1135, status: "onboarding" },
+      { id: "O", name: "Ottolenghi",     branch: "Islington",       cuisine: "Mediterranean",    accent: "#A8C68F", lat: 51.5385, lng: -0.1030, status: "onboarding" },
+      { id: "P", name: "Hawksmoor",      branch: "Spitalfields",    cuisine: "Steak & seafood",  accent: "#8B4513", lat: 51.5195, lng: -0.0772, status: "onboarding" },
+      { id: "Q", name: "Pizza Pilgrims", branch: "Dean St",         cuisine: "Neapolitan pizza", accent: "#D4483B", lat: 51.5138, lng: -0.1312, status: "onboarding" },
+    ];
+
+    const LIVE_KITCHENS = ALL_KITCHENS.filter(k => k.status === "live");
+    const ONBOARDING_KITCHENS = ALL_KITCHENS.filter(k => k.status === "onboarding");
+
+    /* ===============================================================
+       SIDEBAR RENDERER
+       =============================================================== */
+    let selectedKitchenId = null;
+
+    function renderSidebar() {
+      const el = document.getElementById("sidebar-body");
+      if (!el) return;
+
+      let html = '<div class="sidebar-section-label">Active on Hedera</div>';
+
+      for (const k of LIVE_KITCHENS) {
+        const isSelected = selectedKitchenId === k.id;
+        html += `
+          <div class="kitchen-item ${isSelected ? "active" : ""}" data-kid="${k.id}" onclick="selectKitchen('${k.id}')">
+            <span class="k-dot" style="background: ${escapeHtml(k.accent)}; color: ${escapeHtml(k.accent)};"></span>
+            <div class="k-info">
+              <div class="k-name">${escapeHtml(k.name)}</div>
+              <div class="k-branch">${escapeHtml(k.branch)}</div>
+            </div>
+            <span class="k-status live">live</span>
+          </div>
+        `;
+      }
+
+      html += '<div class="sidebar-section-label">Onboarding</div>';
+
+      for (const k of ONBOARDING_KITCHENS) {
+        html += `
+          <div class="kitchen-item" data-kid="${k.id}" onclick="selectKitchen('${k.id}')">
+            <span class="k-dot" style="background: var(--border-2);"></span>
+            <div class="k-info">
+              <div class="k-name">${escapeHtml(k.name)}</div>
+              <div class="k-branch">${escapeHtml(k.branch)}</div>
+            </div>
+            <span class="k-status pending">soon</span>
+          </div>
+        `;
+      }
+
+      el.innerHTML = html;
+
+      // Update active kitchen count in drawer header
+      const countEl = document.getElementById("active-count");
+      if (countEl) countEl.textContent = `${LIVE_KITCHENS.length} active · ${ONBOARDING_KITCHENS.length} onboarding`;
+    }
+
+    function selectKitchen(kid) {
+      selectedKitchenId = kid;
+      renderSidebar();
+
+      // Fly to the kitchen's location
+      const k = ALL_KITCHENS.find(x => x.id === kid);
+      if (!k) return;
+      map.flyTo({ center: [k.lng, k.lat], zoom: 14, duration: 800 });
+
+      // Open the popup if it's a live kitchen with a marker
+      if (markers[kid] && popups[kid]) {
+        for (const pk of Object.values(popups)) {
+          if (pk && pk.isOpen()) pk.remove();
+        }
+        markers[kid].togglePopup();
+      }
+    }
+
+    /* ===============================================================
+       SIMULATION ENGINE — synthetic Hedera events for demo feel
+       ===============================================================
+       Generates realistic-looking REASONING, OFFER, PROPOSAL, and
+       TRADE_EXECUTED events and injects them into STATE so the
+       activity feed appears alive even when agents aren't running. */
+
+    const SIM_INGREDIENTS = ["RICE", "PASTA", "FLOUR", "OIL"];
+    const SIM_THOUGHTS = [
+      "Reviewing surplus forecast for the week ahead — RICE stock is high relative to projected covers.",
+      "Current PASTA inventory sits 12 kg above forecast. Scanning the market for buyers.",
+      "OIL reserves are comfortable but approaching ceiling. Considering a small listing.",
+      "FLOUR demand is soft this week — diners are pivoting to rice dishes. Time to offload.",
+      "Checking peer offers. Wagamama has RICE at a good price — evaluating counter.",
+      "Market scan complete. Two open offers on PASTA, both above my floor. Holding.",
+      "Surplus in RICE confirmed at 18 kg. Posting an offer at 15% below market rate.",
+      "Dishoom's OIL offer looks strong — 0.62 ℏ/kg is well within my ceiling.",
+      "Running cost analysis on FLOUR. Current price of 0.45 ℏ/kg is attractive to buy.",
+      "Inventory rebalance: sold 8 kg PASTA to Pret a Manger. Net position improved.",
+      "Evening prep data suggests lower RICE usage tomorrow. Increasing surplus listing.",
+      "Wagamama's counter on my FLOUR offer is fair. Proceeding to settlement.",
+      "Post-lunch inventory check: OIL consumption was 20% below forecast. Listing surplus.",
+      "Three active offers on the market right now. My PASTA is the most competitive.",
+      "Weekend forecast shows high covers — holding RICE reserves, withdrawing surplus offer.",
+    ];
+
+    let simSeqCounter = 10000;
+    let simRunning = false;
+
+    function simNow() {
+      return (Date.now() / 1000).toFixed(9);
+    }
+
+    function simPick(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    function simRandRange(min, max) {
+      return Math.round((min + Math.random() * (max - min)) * 100) / 100;
+    }
+
+    function generateSimEvent() {
+      const roll = Math.random();
+      const seq = simSeqCounter++;
+      const ts = simNow();
+      const kid = simPick(["A", "B", "C"]);
+      const ingredient = simPick(SIM_INGREDIENTS);
+      const hashscanUrl = `https://hashscan.io/testnet/topic/0.0.sim/${seq}`;
+
+      if (roll < 0.35) {
+        return {
+          _target: "transcript",
+          entry: {
+            seq, consensusTimestamp: ts, kitchenId: kid,
+            kitchenAccountId: "0.0.sim",
+            thought: simPick(SIM_THOUGHTS),
+            hashscanUrl
+          }
+        };
+      } else if (roll < 0.65) {
+        return {
+          _target: "trades",
+          entry: {
+            kind: "OFFER", seq, consensusTimestamp: ts,
+            kitchenId: kid, kitchenAccountId: "0.0.sim",
+            ingredient, qtyKg: simRandRange(5, 25),
+            pricePerKgHbar: simRandRange(0.30, 1.10),
+            hashscanUrl
+          }
+        };
+      } else if (roll < 0.85) {
+        const peers = ["A", "B", "C"].filter(x => x !== kid);
+        return {
+          _target: "trades",
+          entry: {
+            kind: "PROPOSAL", seq, consensusTimestamp: ts,
+            fromKitchenId: kid,
+            toKitchenId: simPick(peers),
+            counterPricePerKgHbar: simRandRange(0.35, 0.95),
+            hashscanUrl
+          }
+        };
+      } else {
+        const peers = ["A", "B", "C"].filter(x => x !== kid);
+        const qty = simRandRange(5, 20);
+        const price = simRandRange(0.35, 0.90);
+        return {
+          _target: "trades",
+          entry: {
+            kind: "TRADE_EXECUTED", seq, consensusTimestamp: ts,
+            sellerKitchenId: kid,
+            buyerKitchenId: simPick(peers),
+            ingredient, qtyKg: qty,
+            totalHbar: Math.round(qty * price * 100) / 100,
+            hashscanUrl
+          }
+        };
+      }
+    }
+
+    function injectSimEvent() {
+      const event = generateSimEvent();
+      if (event._target === "transcript") {
+        STATE.transcript = [event.entry, ...STATE.transcript].slice(0, 100);
+      } else {
+        STATE.trades = [event.entry, ...STATE.trades].slice(0, 100);
+        if (event.entry.kind === "TRADE_EXECUTED") {
+          STATE.tradesSettledToday = (STATE.tradesSettledToday || 0) + 1;
+        }
+      }
+      renderTopbar();
+      renderDrawer();
+      refreshMarkerActivity();
+      refreshAllPopups();
+      renderTradeArcs();
+    }
+
+    function startSimulation() {
+      if (simRunning) return;
+      simRunning = true;
+
+      // Seed a few initial events so the feed isn't empty on load
+      for (let i = 0; i < 6; i++) {
+        const event = generateSimEvent();
+        const offset = (6 - i) * 15;
+        event.entry.consensusTimestamp = ((Date.now() / 1000) - offset).toFixed(9);
+        event.entry.seq = simSeqCounter++;
+        if (event._target === "transcript") {
+          STATE.transcript.push(event.entry);
+        } else {
+          STATE.trades.push(event.entry);
+          if (event.entry.kind === "TRADE_EXECUTED") {
+            STATE.tradesSettledToday = (STATE.tradesSettledToday || 0) + 1;
+          }
+        }
+      }
+
+      // Drip in events at random intervals (2–6 seconds)
+      function scheduleNext() {
+        const delay = 2000 + Math.random() * 4000;
+        setTimeout(() => {
+          if (!simRunning) return;
+          injectSimEvent();
+          scheduleNext();
+        }, delay);
+      }
+      scheduleNext();
+    }
+
+    /* ===============================================================
        POLL LOOP — polls /state (local dev) or /api/state (Vercel)
        =============================================================== */
     const POLL_INTERVAL_MS = 3000;
@@ -973,10 +1619,12 @@
         STATE = Object.assign({}, STATE, next, { error: null });
         rebuildAccountMap();
         ensureMarkers();
+        addPeripheralMarkers();
         renderTopbar();
         renderDrawer();
         refreshMarkerActivity();
         refreshAllPopups();
+        renderTradeArcs();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error("[h8] /state poll failed:", msg);
@@ -990,6 +1638,13 @@
     // Kick off after the map has finished its first render so marker
     // creation has a valid map to attach to. Then poll on a 3s interval.
     map.on("load", () => {
+      renderSidebar();
+      startSimulation();
+      // Initial render with seeded simulation data
+      renderTopbar();
+      renderDrawer();
+      addPeripheralMarkers();
+      // Then start polling /state (merges real data when server is running)
       void pollState();
       setInterval(() => { void pollState(); }, POLL_INTERVAL_MS);
     });

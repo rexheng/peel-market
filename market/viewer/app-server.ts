@@ -65,6 +65,7 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_HTML_PATH = resolve(__dirname, "app.html");
 const PANELS_HTML_PATH = resolve(__dirname, "app-panels.html");
+const HOME_HTML_PATH = resolve(__dirname, "../../index.html");
 const REPO_ROOT = resolve(__dirname, "../..");
 
 const PORT = Number(process.env.APP_PORT ?? 3001);
@@ -579,6 +580,22 @@ const server = http.createServer((req, res) => {
     } catch (err) {
       res.writeHead(500);
       res.end(`app.html read failed: ${(err as Error).message}`);
+    }
+    return;
+  }
+
+  // /home: serve the Peel landing page from the repo root.
+  if (method === "GET" && url === "/home") {
+    try {
+      const html = readFileSync(HOME_HTML_PATH, "utf8");
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
+      res.end(html);
+    } catch (err) {
+      res.writeHead(500);
+      res.end(`index.html read failed: ${(err as Error).message}`);
     }
     return;
   }
