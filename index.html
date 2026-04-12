@@ -1109,6 +1109,111 @@ ul { list-style: none; }
 }
 
 /* ====================================================================
+   WHY HEDERA
+   ==================================================================== */
+.why-hedera {
+  padding-block: var(--space-2xl);
+  background: var(--forest);
+  color: var(--paper);
+  position: relative;
+  overflow: hidden;
+}
+.why-hedera::before {
+  content: "";
+  position: absolute;
+  top: -4px; right: 8%;
+  width: 70px; height: 70px;
+  background: var(--lime);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  opacity: 0.7;
+}
+.why-hedera__head {
+  margin-bottom: var(--space-xl);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.7fr);
+  gap: var(--space-l);
+  align-items: end;
+}
+@media (max-width: 860px) { .why-hedera__head { grid-template-columns: 1fr; } }
+.why-hedera__head p {
+  max-width: 42ch;
+  color: oklch(80% 0.03 125);
+  font-size: var(--step-0);
+}
+
+.why-hedera__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(1rem, 1.5vw, 1.75rem);
+}
+@media (max-width: 960px) { .why-hedera__grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .why-hedera__grid { grid-template-columns: 1fr; } }
+
+.wh-card {
+  background: oklch(26% 0.04 148);
+  border: 1px solid oklch(32% 0.05 148);
+  border-radius: var(--r-l);
+  padding: var(--space-m);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  transition: border-color .3s, transform .3s;
+}
+.wh-card:hover {
+  border-color: var(--lime-deep);
+  transform: translateY(-2px);
+}
+.wh-card__icon {
+  width: 2.8rem; height: 2.8rem;
+  border-radius: var(--r-s);
+  background: oklch(32% 0.06 148);
+  display: grid; place-items: center;
+  flex-shrink: 0;
+}
+.wh-card__icon svg {
+  width: 1.35rem; height: 1.35rem;
+  stroke: var(--lime);
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.wh-card h3 {
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 40, "opsz" 60, "wght" 500;
+  font-size: var(--step-1);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--paper);
+}
+.wh-card p {
+  font-size: var(--step--1);
+  line-height: 1.5;
+  color: oklch(75% 0.03 125);
+}
+.wh-card__stat {
+  margin-top: auto;
+  padding-top: 0.8rem;
+  border-top: 1px dashed oklch(38% 0.04 148);
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 20, "opsz" 144, "wght" 500;
+  font-size: var(--step-2);
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--lime);
+}
+.wh-card__stat span {
+  display: block;
+  font-family: "DM Sans", sans-serif;
+  font-size: var(--step--2);
+  font-weight: 600;
+  color: oklch(60% 0.03 130);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 0.3rem;
+}
+
+/* ====================================================================
    FOOTER CTA
    ==================================================================== */
 .foot {
@@ -1234,6 +1339,7 @@ ul { list-style: none; }
       <a href="#how">How it works</a>
       <a href="#dashboard">The ledger</a>
       <a href="#incent">Why it pays</a>
+      <a href="#why-hedera">Why Hedera</a>
       <a href="programme/app.html" class="btn btn--primary">Live demo <span aria-hidden="true">↗</span></a>
     </nav>
   </div>
@@ -1625,6 +1731,65 @@ ul { list-style: none; }
     </div>
   </section>
 
+  <!-- ============================================================
+       WHY HEDERA
+       ============================================================ -->
+  <section class="why-hedera" id="why-hedera">
+    <div class="wrap why-hedera__head on-scroll">
+      <div>
+        <div class="section-eyebrow" style="color: oklch(72% 0.04 130);">Why Hedera?</div>
+        <h2 style="font-family: 'Fraunces', serif; font-variation-settings: 'SOFT' 50, 'opsz' 144, 'wght' 500; font-size: var(--step-3); line-height: 0.98; letter-spacing: -0.025em; max-width: 18ch; color: var(--paper);">
+          The ledger food supply chains <em style="font-style: italic; font-variation-settings: 'SOFT' 100, 'opsz' 144, 'wght' 400; color: var(--lime);">actually need.</em>
+        </h2>
+      </div>
+      <p>
+        Kitchens buy from dozens of suppliers across borders, settle hundreds of invoices a month, and need every transaction auditable. That rules out most chains — and most banks.
+      </p>
+    </div>
+
+    <div class="wrap">
+      <div class="why-hedera__grid on-scroll">
+
+        <article class="wh-card">
+          <div class="wh-card__icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>
+          </div>
+          <h3>Supplier payments that clear, not float.</h3>
+          <p>Cross-border ingredient orders shouldn't mean 2–5 day settlement windows and opaque intermediary fees. Tokenised transfers finalize in seconds.</p>
+          <div class="wh-card__stat">
+            3–5s
+            <span>finality, not business days</span>
+          </div>
+        </article>
+
+        <article class="wh-card">
+          <div class="wh-card__icon">
+            <svg viewBox="0 0 24 24"><path d="M2 17l4-4 4 4 4-8 4 4 4-4"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
+          </div>
+          <h3>Fixed fees, not gas-price roulette.</h3>
+          <p>Kitchens log dozens of waste events per week. On volatile-fee chains that's an unpredictable cost. Hedera's fees are flat and negligible.</p>
+          <div class="wh-card__stat">
+            ~$0.001
+            <span>per transaction, fixed</span>
+          </div>
+        </article>
+
+        <article class="wh-card">
+          <div class="wh-card__icon">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/></svg>
+          </div>
+          <h3>Carbon-negative by design.</h3>
+          <p>A food-waste platform should practise what it preaches. Hedera's hashgraph consumes a fraction of proof-of-work energy and offsets the rest.</p>
+          <div class="wh-card__stat">
+            0.000003
+            <span>kWh per transaction</span>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
 </main>
 
 <!-- ============================================================
@@ -1646,6 +1811,7 @@ ul { list-style: none; }
       <a href="#how">How it works</a>
       <a href="#dashboard">The weekly ledger</a>
       <a href="#incent">Why it pays</a>
+      <a href="#why-hedera">Why Hedera</a>
       <a href="#">For procurement teams</a>
       <a href="#">For insurers</a>
       <a href="#">Docs &amp; testnet</a>
