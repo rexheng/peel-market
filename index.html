@@ -298,6 +298,148 @@ ul { list-style: none; }
 .hero__peek__row span { color: var(--forest-3); }
 
 /* ====================================================================
+   POS COMPATIBILITY STRIP
+   ==================================================================== */
+.pos-strip {
+  padding-block: var(--space-xl);
+  background: var(--paper);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+}
+.pos-strip__head {
+  text-align: center;
+  margin-bottom: var(--space-l);
+  padding-inline: var(--space-m);
+}
+.pos-strip__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: var(--step--1);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--forest-2);
+  margin-bottom: var(--space-s);
+}
+.pos-strip__eyebrow::before,
+.pos-strip__eyebrow::after {
+  content: ""; width: 24px; height: 1.5px; background: var(--forest-3);
+}
+.pos-strip__lede {
+  max-width: 62ch;
+  margin: 0 auto;
+  font-family: "Fraunces", serif;
+  font-optical-sizing: auto;
+  font-variation-settings: "SOFT" 40, "opsz" 60, "wght" 500;
+  font-size: var(--step-2);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: var(--forest);
+}
+.pos-strip__lede em {
+  font-style: italic;
+  font-variation-settings: "SOFT" 100, "opsz" 60, "wght" 400;
+  color: var(--lime-deep);
+}
+.pos-strip__sub {
+  max-width: 56ch;
+  margin: var(--space-s) auto 0;
+  font-size: var(--step-0);
+  line-height: 1.5;
+  color: var(--forest-2);
+}
+
+.pos-marquee {
+  display: flex;
+  overflow: hidden;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 7%,
+    black 93%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 7%,
+    black 93%,
+    transparent 100%
+  );
+}
+.pos-marquee__track {
+  display: flex;
+  flex-shrink: 0;
+  gap: clamp(1rem, 2vw, 2rem);
+  padding-inline: clamp(0.5rem, 1vw, 1rem);
+  animation: pos-scroll 42s linear infinite;
+  will-change: transform;
+}
+.pos-marquee:hover .pos-marquee__track {
+  animation-play-state: paused;
+}
+@keyframes pos-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.pos-card {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.95rem 1.6rem;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  font-family: "Fraunces", serif;
+  font-optical-sizing: auto;
+  font-variation-settings: "SOFT" 40, "opsz" 60, "wght" 500;
+  font-size: var(--step-0);
+  color: var(--forest);
+  white-space: nowrap;
+  transition: background .3s var(--ease-out-quart), border-color .3s, transform .3s;
+}
+.pos-card:hover {
+  background: var(--paper-3);
+  border-color: var(--lime-deep);
+  transform: translateY(-1px);
+}
+.pos-card__dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--lime-deep);
+  box-shadow: 0 0 0 3px var(--lime);
+  flex-shrink: 0;
+}
+.pos-card__tag {
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--forest-3);
+  padding: 0.18rem 0.5rem;
+  border-radius: 4px;
+  background: var(--paper);
+  margin-left: 0.2rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-marquee__track {
+    animation: none;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+@media (max-width: 640px) {
+  .pos-strip__lede { font-size: var(--step-1); }
+  .pos-card { padding: 0.75rem 1.2rem; font-size: var(--step--1); }
+}
+
+/* ====================================================================
    STAT STRIP
    ==================================================================== */
 .stat {
@@ -951,7 +1093,7 @@ ul { list-style: none; }
       <a href="#how">How it works</a>
       <a href="#dashboard">The ledger</a>
       <a href="#incent">Why it pays</a>
-      <a href="#cta" class="btn btn--primary">Get early access <span aria-hidden="true">↗</span></a>
+      <a href="programme/app.html" class="btn btn--primary">Live demo <span aria-hidden="true">↗</span></a>
     </nav>
   </div>
 </header>
@@ -966,20 +1108,20 @@ ul { list-style: none; }
       <div>
         <div class="hero__kicker reveal reveal-1">
           <span class="hero__kicker__dot" aria-hidden="true"></span>
-          A public food-waste programme · top 25% earn credits
+          Live on Hedera testnet · top 25% earn credits
         </div>
         <h1 class="reveal reveal-2">
           Weigh what the kitchen <em>leaves behind.</em>
         </h1>
         <p class="hero__lede reveal reveal-3">
-          Peel tokenises every invoice and every POS sale. Standard recipes back-calculate what the kitchen should have consumed — and the residue is waste. At period close, an independent Regulator Agent mints tradable credits to the top-performing 25%.
+          Restaurants throw away about fifteen percent of what they buy. Nobody can verify the numbers, so nobody gets paid for doing better. Peel derives each kitchen's waste from the invoices and till data they already keep — then an independent agent mints tradable credits to the twenty-five percent with the lowest waste rate. Every step runs on a public ledger. Anyone can re-check the math.
         </p>
         <div class="hero__cta reveal reveal-4">
-          <a href="#cta" class="btn btn--primary btn--lg">Onboard your kitchen <span aria-hidden="true">→</span></a>
-          <a href="#how" class="btn btn--ghost btn--lg">See the mass balance</a>
+          <a href="programme/app.html" class="btn btn--primary btn--lg">See the live ledger <span aria-hidden="true">→</span></a>
+          <a href="#how" class="btn btn--ghost btn--lg">How it works</a>
         </div>
         <div class="hero__meta reveal reveal-5">
-          Public-good infrastructure · Operated by the programme · Ranked and signed on Hedera
+          Live testnet cycle · signed transactions on HashScan · no self-reported numbers
         </div>
       </div>
 
@@ -1047,6 +1189,45 @@ ul { list-style: none; }
           <div class="hero__peek__row"><span>Rank</span><b class="tnum" style="color: var(--lime-deep)">12 / 100</b></div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       POS COMPATIBILITY STRIP
+       ============================================================ -->
+  <section class="pos-strip" aria-label="Compatible point-of-sale systems">
+    <div class="wrap pos-strip__head on-scroll">
+      <div class="pos-strip__eyebrow">The plumbing already exists</div>
+      <p class="pos-strip__lede">
+        Peel reads the till data your kitchens <em>already log.</em>
+      </p>
+      <p class="pos-strip__sub">
+        Every restaurant rings sales through a point-of-sale system — the tablet or touchscreen where the waiter taps in your order. That till already knows what was sold, when, and at what price. Peel meets the kitchen where it is. No new hardware. No double entry. No workflow to teach.
+      </p>
+    </div>
+    <div class="pos-marquee">
+      <ul class="pos-marquee__track" aria-hidden="true">
+        <!-- First copy (visible) -->
+        <li class="pos-card"><span class="pos-card__dot"></span>Square</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>Toast</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>Lightspeed</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>Epos Now</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>Clover</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>Shopify POS</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>Oracle Micros</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>TouchBistro</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>SumUp</li>
+        <!-- Second copy (for seamless loop — duplicated content) -->
+        <li class="pos-card"><span class="pos-card__dot"></span>Square</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>Toast</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>Lightspeed</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>Epos Now</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>Clover</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>Shopify POS</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>Oracle Micros</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>TouchBistro</li>
+        <li class="pos-card"><span class="pos-card__dot"></span>SumUp</li>
+      </ul>
     </div>
   </section>
 
