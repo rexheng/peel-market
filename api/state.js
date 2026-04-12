@@ -69,7 +69,9 @@ const PROFILES = {
 };
 
 function decode(base64) {
-  return Buffer.from(base64, "base64").toString("utf8");
+  return globalThis.Buffer
+    ? Buffer.from(base64, "base64").toString("utf8")
+    : atob(base64);
 }
 
 function hashscanMsg(topicId, seq) {
@@ -95,7 +97,7 @@ function countTradesSettledToday(trades) {
   ).length;
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Cache-Control", "no-store, max-age=0");
 
