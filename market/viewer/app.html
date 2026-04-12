@@ -562,11 +562,19 @@
     /* ------------------------------------------------------------ */
     .drawer {
       flex: 1;
-      min-height: 180px;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       border-top: 1px solid var(--border);
       background: var(--paper-2);
+      transition: flex 0.3s ease, min-height 0.3s ease;
+    }
+    .drawer.collapsed {
+      flex: 0 0 auto;
+      min-height: 0;
+    }
+    .drawer.collapsed .drawer-body {
+      display: none;
     }
     .drawer-header {
       padding: 12px 32px;
@@ -580,6 +588,17 @@
       justify-content: space-between;
       align-items: center;
       flex-shrink: 0;
+      cursor: pointer;
+      user-select: none;
+    }
+    .drawer-header:hover { background: oklch(95% 0.01 95 / 0.3); }
+    .drawer-chevron {
+      transition: transform 0.3s ease;
+      font-size: 14px;
+      margin-left: 8px;
+    }
+    .drawer.collapsed .drawer-chevron {
+      transform: rotate(180deg);
     }
     .drawer-body {
       flex: 1;
@@ -660,8 +679,8 @@
     <div class="content-col">
       <div id="map"></div>
       <section class="drawer">
-        <div class="drawer-header">
-          <span>Activity feed · live exchange</span>
+        <div class="drawer-header" id="drawer-toggle">
+          <span>Activity feed · live exchange <span class="drawer-chevron">&#x25B2;</span></span>
           <span id="active-count">3 active kitchens</span>
         </div>
         <div class="drawer-body" id="drawer-body">
@@ -1656,6 +1675,11 @@
 
     // Kick off after the map has finished its first render so marker
     // creation has a valid map to attach to. Then poll on a 3s interval.
+    // Drawer expand/collapse toggle
+    document.getElementById("drawer-toggle").addEventListener("click", () => {
+      document.querySelector(".drawer").classList.toggle("collapsed");
+    });
+
     map.on("load", () => {
       initMapLayers();
       renderSidebar();
