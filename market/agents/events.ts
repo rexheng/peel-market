@@ -15,7 +15,7 @@
 
 import type { ServerResponse } from "node:http";
 import type { RawIngredient } from "@shared/hedera/tokens.js";
-import type { Proposal } from "@shared/types.js";
+import type { Proposal, TradeExecuted } from "@shared/types.js";
 
 export type KitchenId = "A" | "B" | "C";
 
@@ -133,7 +133,32 @@ export type TraderEvent =
       kitchen: KitchenId;
       error: string;
     }
-  | { type: "supervisor.cycle_complete"; cyclesPerKitchen: number };
+  | { type: "supervisor.cycle_complete"; cyclesPerKitchen: number }
+  // Added in H5:
+  | { type: "settle.started"; kitchen: KitchenId; proposalCount: number }
+  | {
+      type: "settle.proposal_matched";
+      kitchen: KitchenId;
+      proposalId: string;
+      offerId: string;
+      fromKitchen: string;
+      ingredient: RawIngredient;
+      qtyKg: number;
+      counterPricePerKgHbar: number;
+    }
+  | {
+      type: "settle.declined";
+      kitchen: KitchenId;
+      proposalId: string;
+      reason: string;
+    }
+  | {
+      type: "trade.settled";
+      kitchen: KitchenId;
+      trade: TradeExecuted;
+      transferHashscan: string;
+      commitHashscan: string;
+    };
 
 export type EmitFn = (event: TraderEvent) => void;
 
@@ -438,6 +463,54 @@ export function consoleSink(kitchenId: KitchenId): EmitFn {
         lineBreakIfStreaming();
         console.log(
           `${prefix()}${ANSI.bold}◉ cycle complete · ${event.cyclesPerKitchen} tick(s)/kitchen${ANSI.reset}`
+        );
+        break;
+      }
+      // Added in H5:
+      case "settle.started": {
+        lineBreakIfStreaming();
+        console.log(
+          `${prefix()}· settling · ${event.proposalCount} proposal(s) against my offers`
+        );
+        break;
+      }
+      case "settle.proposal_matched": {
+        lineBreakIfStreaming();
+        console.log(
+          `${prefix()}→ matched PROPOSAL ${ANSI.dim}${event.proposalId}${
+            ANSI.reset
+          } · ${ANSI.bold}${event.qtyKg.toFixed(1)} kg ${
+            event.ingredient
+          }${ANSI.reset} @ ${event.counterPricePerKgHbar.toFixed(
+            3
+          )} HBAR/kg from ${event.fromKitchen}`
+        );
+        break;
+      }
+      case "settle.declined": {
+        lineBreakIfStreaming();
+        console.log(
+          `${prefix()}${ANSI.dim}· declined proposal ${event.proposalId} · ${
+            event.reason
+          }${ANSI.reset}`
+        );
+        break;
+      }
+      case "trade.settled": {
+        lineBreakIfStreaming();
+        const t = event.trade;
+        console.log(
+          `${prefix()}${ANSI.bold}✦✦✦ TRADE SETTLED · ${t.qtyKg.toFixed(
+            1
+          )} kg ${t.ingredient} · ${t.totalHbar.toFixed(3)} HBAR · ${
+            t.seller
+          } → ${t.buyer}${ANSI.reset}`
+        );
+        console.log(
+          `           ${ANSI.cyan}transfer: ${event.transferHashscan}${ANSI.reset}`
+        );
+        console.log(
+          `           ${ANSI.cyan}commit:   ${event.commitHashscan}${ANSI.reset}`
         );
         break;
       }

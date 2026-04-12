@@ -15,6 +15,7 @@ import type {
   IngredientPolicy,
   KitchenPolicy,
   Offer,
+  Proposal,
 } from "@shared/types.js";
 import type { RawIngredient } from "@shared/hedera/tokens.js";
 
@@ -178,6 +179,106 @@ export function buildScanUserPrompt(input: ScanUserPromptInput): string {
     `     offerId: the offerId from your chosen offer above`,
     `     counterPricePerKgHbar: your chosen price, within your policy range for that ingredient`,
     `If nothing is worth countering, skip this step entirely.`,
+    ``,
+    `STEP 4 — Return a one-line plain-text confirmation and STOP.`,
+  ].join("\n");
+}
+
+/* ------------------------------------------------------------------ */
+/*  H5 — settle-phase prompts                                         */
+/* ------------------------------------------------------------------ */
+
+export interface SettleUserPromptInput {
+  kitchenId: "A" | "B" | "C";
+  kitchenName: string;
+  // One specific proposal is evaluated per LLM invocation — the settle
+  // phase calls the LLM once per matched proposal (H5 caps at 1 per tick).
+  proposal: Proposal;
+  // The offer this proposal counters — must be authored by this kitchen.
+  offer: Offer;
+  // This kitchen's policy for the offer's ingredient.
+  policy: IngredientPolicy;
+}
+
+export function buildSettleSystemPrompt(kitchen: KitchenPolicy): string {
+  return [
+    `You are the autonomous trader for ${kitchen.kitchenName}, a commercial kitchen participating in an inter-kitchen surplus-ingredient market.`,
+    ``,
+    `You just posted any own offers and scanned peer offers. Now you are entering the SETTLE PHASE of this tick: a peer kitchen has published a PROPOSAL counter-offer on ONE of YOUR open offers. You must decide whether to ACCEPT or DECLINE it.`,
+    ``,
+    `Your owner has given you a strict mandate encoded as a policy. You MUST respect it:`,
+    `  - You may only accept counter prices at or above your FLOOR for that ingredient.`,
+    `  - If the counter is below your floor, you MUST decline.`,
+    `  - If the counter is at or above your floor, you should accept — revenue now beats holding inventory that may spoil.`,
+    ``,
+    `This tick, you have exactly ONE job:`,
+    `  1. Call 'publishReasoning' EXACTLY ONCE, with a one-sentence explanation of your decision.`,
+    `  2. IF accepting, call 'acceptTrade' EXACTLY ONCE with the proposalId. This triggers an atomic HTS + HBAR transfer on Hedera and publishes a TRADE_EXECUTED envelope.`,
+    `  3. IF declining, do NOT call acceptTrade. Just publishReasoning and stop.`,
+    `  4. STOP. Return a one-line plain-text confirmation.`,
+    ``,
+    `CRITICAL RULES:`,
+    `  - Call publishReasoning exactly ONCE. Never call it twice.`,
+    `  - Call acceptTrade AT MOST ONCE.`,
+    `  - Do not call any other tool.`,
+    `  - Do not verify, double-check, or retry tool calls.`,
+    `  - If acceptTrade returns an error, surface it in your final message and stop. Do NOT retry.`,
+    `  - Your final message must be plain text, never a tool call.`,
+  ].join("\n");
+}
+
+export function buildSettleUserPrompt(input: SettleUserPromptInput): string {
+  const { kitchenId, kitchenName, proposal, offer, policy } = input;
+  const totalHbar = proposal.counterPricePerKgHbar * offer.qtyKg;
+  const withinFloor =
+    proposal.counterPricePerKgHbar >= policy.floor_price_hbar_per_kg;
+  const floorMargin =
+    proposal.counterPricePerKgHbar - policy.floor_price_hbar_per_kg;
+  return [
+    `You are Kitchen ${kitchenId} (${kitchenName}).`,
+    ``,
+    `A peer kitchen has posted a PROPOSAL counter-offer on one of your open offers:`,
+    ``,
+    `  Your offer:`,
+    `    offerId:    ${offer.offerId}`,
+    `    ingredient: ${offer.ingredient}`,
+    `    qty:        ${offer.qtyKg.toFixed(1)} kg`,
+    `    your ask:   ${offer.pricePerKgHbar.toFixed(3)} HBAR/kg`,
+    ``,
+    `  Their counter (PROPOSAL):`,
+    `    proposalId: ${proposal.proposalId}`,
+    `    from:       ${proposal.fromKitchen}`,
+    `    counter:    ${proposal.counterPricePerKgHbar.toFixed(3)} HBAR/kg`,
+    `    total if accepted: ${totalHbar.toFixed(3)} HBAR for ${offer.qtyKg.toFixed(
+      1
+    )} kg`,
+    ``,
+    `  Your policy for ${offer.ingredient}:`,
+    `    floor:   ${policy.floor_price_hbar_per_kg} HBAR/kg`,
+    `    ceiling: ${policy.ceiling_price_hbar_per_kg} HBAR/kg`,
+    ``,
+    `Decision framing:`,
+    `  · counter is ${withinFloor ? "AT OR ABOVE" : "BELOW"} your floor (margin ${
+      floorMargin >= 0 ? "+" : ""
+    }${floorMargin.toFixed(3)} HBAR/kg).`,
+    `  · ${
+      withinFloor
+        ? "Accepting clears the surplus and banks real HBAR now."
+        : "Accepting would violate your mandate — decline."
+    }`,
+    ``,
+    `STEP 1 — THINK OUT LOUD FIRST (this is important).`,
+    `Before calling any tool, write 2-4 sentences of plain English reasoning explaining:`,
+    `  · your read of the counter vs your floor,`,
+    `  · whether revenue-now beats holding inventory,`,
+    `  · and your decision: accept or decline.`,
+    `Speak in the first person, like a trader narrating. Do this BEFORE any tool call.`,
+    ``,
+    `STEP 2 — Call publishReasoning with a concise one-sentence summary of your decision.`,
+    ``,
+    `STEP 3 — IF accepting, call acceptTrade with:`,
+    `     proposalId: "${proposal.proposalId}"`,
+    `If declining, skip this step entirely.`,
     ``,
     `STEP 4 — Return a one-line plain-text confirmation and STOP.`,
   ].join("\n");

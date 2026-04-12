@@ -26,7 +26,15 @@
 
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { Client, TopicMessageSubmitTransaction } from "@hashgraph/sdk";
+import {
+  AccountId,
+  Client,
+  Hbar,
+  HbarUnit,
+  TokenId,
+  TopicMessageSubmitTransaction,
+  TransferTransaction,
+} from "@hashgraph/sdk";
 import type { RawIngredient, TokenRegistry } from "@shared/hedera/tokens.js";
 import type { TopicRegistry } from "@shared/hedera/topics.js";
 import type { KitchenPolicy } from "@shared/types.js";
@@ -34,13 +42,16 @@ import {
   MarketMessage,
   OfferSchema,
   ProposalSchema,
+  TradeExecutedSchema,
   TranscriptEntrySchema,
   type Offer,
   type Proposal,
+  type TradeExecuted,
   type TranscriptEntry,
 } from "@shared/types.js";
-import type { EmitFn } from "./events.js";
+import type { EmitFn, KitchenId } from "./events.js";
 import { hashscan } from "./hashscan.js";
+import { kitchenIdForAccount, kitchenPrivateKey } from "./keys.js";
 
 /* ------------------------------------------------------------------ */
 /*  Tool input schemas (zod, for LangChain binding)                   */
@@ -63,8 +74,11 @@ export const ProposeTradeInput = z.object({
   counterPricePerKgHbar: z.number().positive(),
 });
 
+// H5: acceptTrade takes a proposalId (not an offerId). The zod schema is
+// ground truth — this aligns with how the settle phase evaluates one specific
+// PROPOSAL per invocation.
 export const AcceptTradeInput = z.object({
-  offerId: z.string(),
+  proposalId: z.string(),
 });
 
 export const PublishReasoningInput = z.object({
@@ -491,14 +505,245 @@ export function createTools(ctx: ToolContext) {
       }
     },
 
-    /** Execute HTS transfer + HBAR payment and publish TRADE_EXECUTED. */
-    async acceptTrade(_args: z.infer<typeof AcceptTradeInput>) {
-      // EXTEND: H5 builds a single atomic TransferTransaction that moves
-      //         both the HTS token batch and the HBAR counter-payment,
-      //         then publishes a TRADE_EXECUTED envelope to MARKET_TOPIC.
-      throw new Error(
-        "TODO H5: atomic TransferTransaction with HTS + HBAR, then HCS log"
-      );
+    /**
+     * Execute a single atomic HTS + HBAR TransferTransaction on Hedera,
+     * then publish a TRADE_EXECUTED envelope to MARKET_TOPIC.
+     *
+     * Accepting kitchen (the offer's seller) is this kitchen. The buyer is
+     * `proposal.fromKitchen`. Both sign the transfer; in the demo both keys
+     * are locally available via env-bridge. EXTEND: full version uses
+     * ScheduleCreateTransaction + schedule-sign coordinated via HCS.
+     */
+    async acceptTrade(
+      args: z.infer<typeof AcceptTradeInput>
+    ): Promise<{
+      tradeId: string;
+      transferHashscan: string;
+      commitHashscan: string;
+    }> {
+      const { proposalId } = args;
+
+      // 1. Walk MARKET_TOPIC history once. Collect:
+      //    - proposals keyed by proposalId
+      //    - offers keyed by offerId
+      //    - set of settled offerIds (from TRADE_EXECUTED envelopes)
+      const all = await fetchMarketMessages(ctx);
+      const proposals = new Map<string, Proposal>();
+      const offers = new Map<string, Offer>();
+      const settledOfferIds = new Set<string>();
+      const settledProposalIds = new Set<string>();
+      for (const m of all) {
+        if (m.kind === "PROPOSAL") proposals.set(m.proposalId, m);
+        else if (m.kind === "OFFER") offers.set(m.offerId, m);
+        else if (m.kind === "TRADE_EXECUTED") {
+          if (m.offerId) settledOfferIds.add(m.offerId);
+          if (m.proposalId) settledProposalIds.add(m.proposalId);
+        }
+      }
+
+      // 2. Resolve the proposal.
+      const proposal = proposals.get(proposalId);
+      if (!proposal) {
+        throw new Error(
+          `acceptTrade rejected: no PROPOSAL with id ${proposalId} found on MARKET_TOPIC.`
+        );
+      }
+      if (proposal.toKitchen !== ctx.kitchenAccountId) {
+        throw new Error(
+          `acceptTrade rejected: proposal ${proposalId} is addressed to ${proposal.toKitchen}, ` +
+            `not to this kitchen (${ctx.kitchenAccountId}).`
+        );
+      }
+      if (settledProposalIds.has(proposalId)) {
+        throw new Error(
+          `acceptTrade rejected: proposal ${proposalId} has already been settled in a prior tick.`
+        );
+      }
+
+      // 3. Resolve the offer this proposal counters.
+      const offer = offers.get(proposal.offerId);
+      if (!offer) {
+        throw new Error(
+          `acceptTrade rejected: proposal ${proposalId} references unknown offer ${proposal.offerId}.`
+        );
+      }
+      if (offer.kitchen !== ctx.kitchenAccountId) {
+        throw new Error(
+          `acceptTrade rejected: offer ${offer.offerId} is not authored by this kitchen.`
+        );
+      }
+      if (settledOfferIds.has(offer.offerId)) {
+        throw new Error(
+          `acceptTrade rejected: offer ${offer.offerId} was already settled in a prior tick.`
+        );
+      }
+
+      // 4. Policy gate — the counter must be at or above this kitchen's floor
+      //    (±10% tolerance) for that ingredient.
+      const ingPolicy = ctx.policy[offer.ingredient];
+      const floorWithTol = ingPolicy.floor_price_hbar_per_kg * 0.9;
+      if (proposal.counterPricePerKgHbar < floorWithTol) {
+        throw new Error(
+          `acceptTrade rejected: counter ${proposal.counterPricePerKgHbar} HBAR/kg ` +
+            `below this kitchen's floor ${ingPolicy.floor_price_hbar_per_kg} HBAR/kg for ${offer.ingredient}.`
+        );
+      }
+
+      // 5. Resolve buyer kitchen (by account id → KitchenId local lookup).
+      const buyerKitchenId = kitchenIdForAccount(proposal.fromKitchen);
+      if (!buyerKitchenId) {
+        throw new Error(
+          `acceptTrade rejected: proposal.fromKitchen ${proposal.fromKitchen} is not one of the ` +
+            `seeded kitchens (A/B/C). In the demo we must be able to sign locally for both sides.`
+        );
+      }
+      const buyerPrivateKey = kitchenPrivateKey(buyerKitchenId);
+
+      // 6. Safety: confirm we still hold enough tokens.
+      const currentBalances = await fetchBalances(ctx, ctx.kitchenAccountId);
+      const myHeld = currentBalances.get(ctx.tokens[offer.ingredient]) ?? 0;
+      const qtyBaseUnits = Math.round(offer.qtyKg * 1000); // 3 decimals
+      if (myHeld < qtyBaseUnits) {
+        throw new Error(
+          `acceptTrade rejected: insufficient ${offer.ingredient} balance. ` +
+            `Holding ${(myHeld / 1000).toFixed(3)} kg, need ${offer.qtyKg.toFixed(3)} kg.`
+        );
+      }
+
+      // 7. Safety: confirm buyer has enough HBAR. Uses mirror node
+      //    /accounts/{id} — the balance field is in tinybars.
+      const totalHbar = proposal.counterPricePerKgHbar * offer.qtyKg;
+      const totalTinybars = Math.round(totalHbar * 1e8);
+      const buyerTinybars = await fetchHbarBalance(ctx, proposal.fromKitchen);
+      // Tx fees ~50k tinybars — leave a 1M headroom.
+      if (buyerTinybars < totalTinybars + 1_000_000) {
+        throw new Error(
+          `acceptTrade rejected: buyer ${proposal.fromKitchen} has only ${(
+            buyerTinybars / 1e8
+          ).toFixed(4)} HBAR, needs ${totalHbar.toFixed(4)} HBAR + fees.`
+        );
+      }
+
+      // 8. Build the atomic TransferTransaction.
+      //    One transaction, two legs, two signatures. Either everything
+      //    settles or nothing settles — Hedera guarantees atomicity.
+      const tokenId = TokenId.fromString(ctx.tokens[offer.ingredient]);
+      const sellerAccount = AccountId.fromString(ctx.kitchenAccountId);
+      const buyerAccount = AccountId.fromString(proposal.fromKitchen);
+      const hbarTotal = Hbar.from(totalTinybars, HbarUnit.Tinybar);
+
+      const transferTx = await new TransferTransaction()
+        .addTokenTransfer(tokenId, sellerAccount, -qtyBaseUnits)
+        .addTokenTransfer(tokenId, buyerAccount, +qtyBaseUnits)
+        .addHbarTransfer(buyerAccount, hbarTotal.negated())
+        .addHbarTransfer(sellerAccount, hbarTotal)
+        .setTransactionMemo(`peel:trade:${proposalId}`)
+        .freezeWith(ctx.client);
+
+      // 9. Sign with BOTH kitchen keys.
+      //    Seller signs via the client operator on execute(); we explicitly
+      //    sign with the buyer key here. Double-sign is a no-op if the seller
+      //    key is already known to the tx.
+      const signedByBuyer = await transferTx.sign(buyerPrivateKey);
+
+      // 10. Execute and await receipt.
+      let transferTxId: string;
+      let transferHashscanUrl: string;
+      try {
+        const response = await signedByBuyer.execute(ctx.client);
+        const receipt = await response.getReceipt(ctx.client);
+        if (receipt.status.toString() !== "SUCCESS") {
+          throw new Error(
+            `TransferTransaction returned ${receipt.status.toString()}`
+          );
+        }
+        transferTxId = response.transactionId.toString();
+        transferHashscanUrl = hashscan.tx(transferTxId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        ctx.emit({
+          type: "hcs.submit.failure",
+          kitchen: ctx.kitchenId,
+          topic: "MARKET",
+          error: `transfer failed: ${msg}`,
+        });
+        throw err;
+      }
+
+      // 11. Build + publish TRADE_EXECUTED envelope.
+      //     htsTxId and hbarTxId both reference the same atomic transfer.
+      const tradeId = `trade_${randomUUID().slice(0, 8)}`;
+      const envelope: TradeExecuted = {
+        kind: "TRADE_EXECUTED",
+        tradeId,
+        offerId: offer.offerId,
+        proposalId,
+        seller: ctx.kitchenAccountId,
+        buyer: proposal.fromKitchen,
+        ingredient: offer.ingredient,
+        qtyKg: offer.qtyKg,
+        totalHbar,
+        htsTxId: transferTxId,
+        hbarTxId: transferTxId,
+      };
+      TradeExecutedSchema.parse(envelope);
+
+      ctx.emit({
+        type: "hcs.submit.request",
+        kitchen: ctx.kitchenId,
+        topic: "MARKET",
+        envelope,
+      });
+
+      let commitTxId: string;
+      let commitHashscanUrl: string;
+      try {
+        const commitTx = await new TopicMessageSubmitTransaction()
+          .setTopicId(ctx.topics.MARKET_TOPIC)
+          .setMessage(JSON.stringify(envelope))
+          .execute(ctx.client);
+        const commitReceipt = await commitTx.getReceipt(ctx.client);
+        if (commitReceipt.status.toString() !== "SUCCESS") {
+          throw new Error(
+            `TRADE_EXECUTED commit returned ${commitReceipt.status.toString()}`
+          );
+        }
+        commitTxId = commitTx.transactionId.toString();
+        commitHashscanUrl = hashscan.tx(commitTxId);
+      } catch (err) {
+        // The transfer already settled on-chain — the commit failing leaves
+        // the trade as "happened but not announced". Surface loudly; the
+        // viewer can still pick up the transfer via mirror node.
+        const msg = err instanceof Error ? err.message : String(err);
+        ctx.emit({
+          type: "hcs.submit.failure",
+          kitchen: ctx.kitchenId,
+          topic: "MARKET",
+          error: `TRADE_EXECUTED commit failed after transfer settled: ${msg}`,
+        });
+        throw err;
+      }
+
+      ctx.emit({
+        type: "hcs.submit.success",
+        kitchen: ctx.kitchenId,
+        topic: "MARKET",
+        txId: commitTxId,
+        hashscanUrl: commitHashscanUrl,
+      });
+      ctx.emit({
+        type: "trade.settled",
+        kitchen: ctx.kitchenId,
+        trade: envelope,
+        transferHashscan: transferHashscanUrl,
+        commitHashscan: commitHashscanUrl,
+      });
+
+      return {
+        tradeId,
+        transferHashscan: transferHashscanUrl,
+        commitHashscan: commitHashscanUrl,
+      };
     },
 
     /**
@@ -574,48 +819,158 @@ export type KitchenTraderTools = ReturnType<typeof createTools>;
 /* ------------------------------------------------------------------ */
 
 async function fetchOpenOffers(ctx: ToolContext): Promise<Offer[]> {
+  const all = await fetchMarketMessages(ctx);
+  const now = Date.now();
+
+  // H5: collect settled offerIds so we can filter them out below.
+  const settledOfferIds = new Set<string>();
+  for (const m of all) {
+    if (m.kind === "TRADE_EXECUTED" && m.offerId) {
+      settledOfferIds.add(m.offerId);
+    }
+  }
+
+  const offers: Offer[] = [];
+  for (const m of all) {
+    if (m.kind !== "OFFER") continue;
+    // Expiry filter — skip offers whose expiresAt is in the past.
+    const expiresMs = Date.parse(m.expiresAt);
+    if (!Number.isNaN(expiresMs) && expiresMs <= now) continue;
+    // H5: skip offers that already have a TRADE_EXECUTED referencing them.
+    if (settledOfferIds.has(m.offerId)) continue;
+    offers.push(m);
+  }
+  return offers;
+}
+
+/**
+ * Walk MARKET_TOPIC once and return every parseable MarketMessage envelope.
+ * Shared by fetchOpenOffers (H4) and acceptTrade (H5) so both agree on the
+ * same snapshot of history.
+ *
+ * EXTEND: demo scans from index 0 every call — full version keeps a cursor
+ *         on the last-seen consensus timestamp so the walk scales past the
+ *         100-message page limit.
+ */
+async function fetchMarketMessages(
+  ctx: ToolContext
+): Promise<MarketMessage[]> {
   const url = `${ctx.mirrorNode}/api/v1/topics/${ctx.topics.MARKET_TOPIC}/messages?order=asc&limit=100`;
   const resp = await fetch(url);
   if (!resp.ok) {
     throw new Error(
-      `scanMarket: mirror node returned ${resp.status} ${resp.statusText}`
+      `fetchMarketMessages: mirror node returned ${resp.status} ${resp.statusText}`
     );
   }
   const body = (await resp.json()) as {
     messages?: Array<{ message: string }>;
   };
 
-  const now = Date.now();
-  const offers: Offer[] = [];
-
+  const out: MarketMessage[] = [];
   for (const m of body.messages ?? []) {
-    // EXTEND: demo scans from index 0 every call — full version keeps a
-    //         cursor on the last-seen consensus timestamp so the walk
-    //         scales past the 100-message page limit.
     let parsed: unknown;
     try {
-      parsed = JSON.parse(
-        Buffer.from(m.message, "base64").toString("utf8")
-      );
+      parsed = JSON.parse(Buffer.from(m.message, "base64").toString("utf8"));
     } catch {
-      // malformed JSON — skip silently (old test messages, etc.)
       continue;
     }
     const result = MarketMessage.safeParse(parsed);
     if (!result.success) continue;
-    if (result.data.kind !== "OFFER") continue;
+    out.push(result.data);
+  }
+  return out;
+}
 
-    const offer = result.data;
-    // Expiry filter — skip offers whose expiresAt is in the past.
+/**
+ * Return a Map<tokenId, baseUnitBalance> for a given account.
+ * Used by acceptTrade to verify the seller still holds enough tokens.
+ */
+async function fetchBalances(
+  ctx: ToolContext,
+  accountId: string
+): Promise<Map<string, number>> {
+  const url = `${ctx.mirrorNode}/api/v1/accounts/${accountId}/tokens?limit=100`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error(
+      `fetchBalances: mirror node returned ${resp.status} ${resp.statusText}`
+    );
+  }
+  const body = (await resp.json()) as {
+    tokens?: Array<{ token_id: string; balance: number }>;
+  };
+  const out = new Map<string, number>();
+  for (const t of body.tokens ?? []) {
+    out.set(t.token_id, t.balance);
+  }
+  return out;
+}
+
+/**
+ * Return an account's HBAR balance in tinybars. Used by acceptTrade to
+ * verify the buyer can afford the transfer before we freeze/sign/execute.
+ */
+async function fetchHbarBalance(
+  ctx: ToolContext,
+  accountId: string
+): Promise<number> {
+  const url = `${ctx.mirrorNode}/api/v1/accounts/${accountId}`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error(
+      `fetchHbarBalance: mirror node returned ${resp.status} ${resp.statusText}`
+    );
+  }
+  const body = (await resp.json()) as {
+    balance?: { balance?: number };
+  };
+  return body.balance?.balance ?? 0;
+}
+
+/**
+ * H5 — find open PROPOSAL envelopes addressed to this kitchen, i.e. peers
+ * countering one of this kitchen's still-open offers. Used by the settle
+ * phase of tick() to decide whether the LLM should be invoked.
+ *
+ * Returns the matched proposals paired with the offers they target. A
+ * proposal is "matched" if:
+ *   - its `toKitchen` equals this kitchen's account id, AND
+ *   - its `offerId` refers to an offer authored by this kitchen, AND
+ *   - that offer is still open (not expired, not already settled), AND
+ *   - the proposal itself has not already been settled.
+ */
+export async function findMatchedProposalsForKitchen(
+  ctx: ToolContext
+): Promise<Array<{ proposal: Proposal; offer: Offer }>> {
+  const all = await fetchMarketMessages(ctx);
+  const now = Date.now();
+
+  const offers = new Map<string, Offer>();
+  const settledOfferIds = new Set<string>();
+  const settledProposalIds = new Set<string>();
+
+  for (const m of all) {
+    if (m.kind === "OFFER") offers.set(m.offerId, m);
+    else if (m.kind === "TRADE_EXECUTED") {
+      if (m.offerId) settledOfferIds.add(m.offerId);
+      if (m.proposalId) settledProposalIds.add(m.proposalId);
+    }
+  }
+
+  const matches: Array<{ proposal: Proposal; offer: Offer }> = [];
+  for (const m of all) {
+    if (m.kind !== "PROPOSAL") continue;
+    if (m.toKitchen !== ctx.kitchenAccountId) continue;
+    if (settledProposalIds.has(m.proposalId)) continue;
+
+    const offer = offers.get(m.offerId);
+    if (!offer) continue;
+    if (offer.kitchen !== ctx.kitchenAccountId) continue;
+    if (settledOfferIds.has(offer.offerId)) continue;
     const expiresMs = Date.parse(offer.expiresAt);
     if (!Number.isNaN(expiresMs) && expiresMs <= now) continue;
 
-    // EXTEND: H5 will also filter OFFERs that have been settled by a
-    //         TRADE_EXECUTED envelope. H4 ships before any TRADE_EXECUTED
-    //         envelopes exist on MARKET_TOPIC, so this is a no-op until H5.
-
-    offers.push(offer);
+    matches.push({ proposal: m, offer });
   }
-
-  return offers;
+  return matches;
 }

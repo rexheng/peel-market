@@ -45,7 +45,9 @@ import type { KitchenPolicy, IngredientPolicy } from "@shared/types.js";
 
 import {
   createTools,
+  findMatchedProposalsForKitchen,
   type ToolContext,
+  AcceptTradeInput,
   PostOfferInput,
   ProposeTradeInput,
   PublishReasoningInput,
@@ -54,11 +56,13 @@ import {
 import {
   buildScanSystemPrompt,
   buildScanUserPrompt,
+  buildSettleSystemPrompt,
+  buildSettleUserPrompt,
   buildSystemPrompt,
   buildUserPrompt,
 } from "./prompt.js";
 import type { EmitFn, KitchenId } from "./events.js";
-import type { Offer } from "@shared/types.js";
+import type { Offer, Proposal } from "@shared/types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -193,6 +197,7 @@ export class KitchenTraderAgent {
     const hashscanUrls: string[] = [];
     let postedOffer = false;
     let proposedTrade = false;
+    let settledTrade = false;
 
     // 4. Any breach? If yes, run the H3 post-offer LLM phase. If no, skip
     //    to the H4 scan phase (a kitchen with no surplus can still counter
@@ -216,14 +221,21 @@ export class KitchenTraderAgent {
       postedOffer = hashscanUrls.length >= 2;
     }
 
-    // 8. H4 scan phase — read MARKET_TOPIC for peer offers and optionally
+    // 5. H4 scan phase — read MARKET_TOPIC for peer offers and optionally
     //    propose a counter on ONE of them. Runs after the post-offer phase
     //    so freshly-published offers from THIS kitchen are already on the
     //    mirror node (filtered out by scanMarket's self-exclusion anyway).
     proposedTrade = await this.runScanPhase(hashscanUrls);
 
+    // 6. H5 settle phase — read MARKET_TOPIC for PROPOSAL envelopes
+    //    targeting THIS kitchen's still-open offers and, for the first
+    //    match, invoke the LLM to decide accept-or-decline. Settling
+    //    triggers an atomic HTS + HBAR TransferTransaction and a
+    //    TRADE_EXECUTED commit.
+    settledTrade = await this.runSettlePhase(hashscanUrls);
+
     const action: "posted" | "idle" =
-      postedOffer || proposedTrade ? "posted" : "idle";
+      postedOffer || proposedTrade || settledTrade ? "posted" : "idle";
     emit({ type: "tick.end", kitchen, action, hashscanUrls });
 
     return { action, hashscanUrls };
@@ -548,6 +560,228 @@ export class KitchenTraderAgent {
     emit({ type: "llm.done", kitchen, fullText });
 
     return proposed || hashscanUrls.length > startUrlCount;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  H5 settle phase — evaluate inbound PROPOSALs on my open offers    */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Returns true iff a TRADE_EXECUTED envelope landed on MARKET_TOPIC during
+   * this phase (i.e. the LLM accepted and the atomic transfer settled).
+   *
+   * H5 evaluates AT MOST ONE matched proposal per tick — if the LLM declines
+   * or the settlement fails, subsequent proposals in the same match-list
+   * wait for the next tick. Keeps the Groq TPM budget bounded and the demo
+   * narrative clean.
+   *
+   * EXTEND: full version ranks multiple matched proposals by (counter price,
+   *         time received, requester reputation) and may settle several in
+   *         a single tick with fan-out error handling.
+   */
+  private async runSettlePhase(hashscanUrls: string[]): Promise<boolean> {
+    const emit = this.ctx.emit;
+    const kitchen = this.kitchenId;
+
+    // 1. TS-side pre-scan — find proposals addressed to this kitchen that
+    //    reference still-open offers of ours.
+    let matches: Array<{ proposal: Proposal; offer: Offer }>;
+    try {
+      matches = await findMatchedProposalsForKitchen(this.ctx);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      emit({
+        type: "tick.error",
+        kitchen,
+        phase: "settle.fetch",
+        error: errMsg,
+      });
+      return false;
+    }
+
+    emit({
+      type: "settle.started",
+      kitchen,
+      proposalCount: matches.length,
+    });
+
+    if (matches.length === 0) return false;
+
+    // 2. Pick the first matched proposal. H5 caps at 1 per tick.
+    const { proposal, offer } = matches[0];
+    const ingPolicy: IngredientPolicy = this.policy[offer.ingredient];
+
+    emit({
+      type: "settle.proposal_matched",
+      kitchen,
+      proposalId: proposal.proposalId,
+      offerId: offer.offerId,
+      fromKitchen: proposal.fromKitchen,
+      ingredient: offer.ingredient,
+      qtyKg: offer.qtyKg,
+      counterPricePerKgHbar: proposal.counterPricePerKgHbar,
+    });
+
+    // 3. Bind settle-phase LLM tools: publishReasoning (reused from H3)
+    //    and acceptTrade (new in H5).
+    const publishReasoningTool = new DynamicStructuredTool({
+      name: "publishReasoning",
+      description:
+        "Publish a one-sentence natural-language reasoning thought to the public TRANSCRIPT topic on Hedera. Call this EXACTLY ONCE before deciding.",
+      schema: PublishReasoningInput,
+      func: async (args) => {
+        const { hashscanUrl } = await this.tools.publishReasoning(args);
+        emit({
+          type: "llm.tool_result",
+          kitchen,
+          name: "publishReasoning",
+          result: { hashscanUrl },
+        });
+        return JSON.stringify({ ok: true, hashscanUrl });
+      },
+    });
+
+    const acceptTradeTool = new DynamicStructuredTool({
+      name: "acceptTrade",
+      description:
+        "Accept a PROPOSAL counter-offer on one of your open offers. Executes an atomic HTS + HBAR TransferTransaction on Hedera and publishes a TRADE_EXECUTED envelope. Required arg: proposalId (the proposal to accept). Call this AT MOST ONCE per tick.",
+      schema: AcceptTradeInput,
+      func: async (args) => {
+        try {
+          const result = await this.tools.acceptTrade(args);
+          emit({
+            type: "llm.tool_result",
+            kitchen,
+            name: "acceptTrade",
+            result,
+          });
+          return JSON.stringify({ ok: true, ...result });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          emit({
+            type: "settle.declined",
+            kitchen,
+            proposalId: args.proposalId,
+            reason: msg,
+          });
+          // Return the error as a tool result so the LLM sees it and stops,
+          // rather than rethrowing (which would crash the whole settle phase).
+          return JSON.stringify({ ok: false, error: msg });
+        }
+      },
+    });
+
+    const systemPrompt = buildSettleSystemPrompt(this.policy);
+    const userPrompt = buildSettleUserPrompt({
+      kitchenId: this.kitchenId,
+      kitchenName: this.policy.kitchenName,
+      proposal,
+      offer,
+      policy: ingPolicy,
+    });
+
+    const agent = createAgent({
+      model: this.chatModel,
+      tools: [publishReasoningTool, acceptTradeTool],
+      systemPrompt,
+      checkpointer: new MemorySaver(),
+    });
+
+    emit({
+      type: "llm.invoke",
+      kitchen,
+      model: this.modelName,
+      promptPreview: userPrompt.slice(0, 200),
+    });
+
+    let fullText = "";
+    let settled = false;
+    const startUrlCount = hashscanUrls.length;
+
+    try {
+      const eventStream = agent.streamEvents(
+        { messages: [{ role: "user", content: userPrompt }] },
+        {
+          configurable: { thread_id: `${kitchen}-settle-${Date.now()}` },
+          recursionLimit: 8,
+          version: "v2",
+        }
+      );
+
+      for await (const ev of eventStream) {
+        if (ev.event === "on_chat_model_stream") {
+          const chunk: unknown = ev.data?.chunk;
+          const content = extractContentText(chunk);
+          if (content) {
+            fullText += content;
+            emit({ type: "llm.token", kitchen, text: content });
+          }
+        } else if (ev.event === "on_tool_start") {
+          const name = ev.name ?? "unknown";
+          if (name === "publishReasoning" || name === "acceptTrade") {
+            emit({
+              type: "llm.tool_call",
+              kitchen,
+              name,
+              args: ev.data?.input ?? {},
+            });
+          }
+        } else if (ev.event === "on_tool_end") {
+          const name = ev.name ?? "unknown";
+          if (name === "acceptTrade") {
+            // acceptTrade's success path emits trade.settled + hcs.submit.success
+            // directly — we just need to harvest URLs and flip the flag.
+            const output = ev.data?.output;
+            const outputText = extractToolOutputText(output);
+            if (outputText) {
+              try {
+                const parsed = JSON.parse(outputText) as {
+                  ok?: boolean;
+                  transferHashscan?: string;
+                  commitHashscan?: string;
+                };
+                if (parsed.ok) {
+                  if (parsed.transferHashscan)
+                    hashscanUrls.push(parsed.transferHashscan);
+                  if (parsed.commitHashscan)
+                    hashscanUrls.push(parsed.commitHashscan);
+                  settled = true;
+                }
+              } catch {
+                /* trade.settled event already fired by the tool body */
+              }
+            }
+          } else if (name === "publishReasoning") {
+            const output = ev.data?.output;
+            const outputText = extractToolOutputText(output);
+            if (outputText) {
+              try {
+                const parsed = JSON.parse(outputText) as {
+                  hashscanUrl?: string;
+                };
+                if (parsed.hashscanUrl) hashscanUrls.push(parsed.hashscanUrl);
+              } catch {
+                /* ignore */
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      emit({
+        type: "tick.error",
+        kitchen,
+        phase: "llm.stream.settle",
+        error: errMsg,
+      });
+      // Don't rethrow — settle-phase failures are non-fatal to the tick.
+      return false;
+    }
+
+    emit({ type: "llm.done", kitchen, fullText });
+
+    return settled || hashscanUrls.length > startUrlCount;
   }
 
   get name(): string {
