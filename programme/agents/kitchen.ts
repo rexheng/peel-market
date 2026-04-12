@@ -21,19 +21,102 @@ import { publishToProgrammeTopic } from "../hedera/publish.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-interface RecipeBook {
+/**
+ * Recipe book schema — dual-style, normalized to a flat map at load time.
+ *
+ * - `raw_direct` entries specify `kg_per_unit` directly (for simple per-portion
+ *   dishes like a plate of risotto).
+ * - `batch` entries specify `raw_inputs_kg + portions` (for batch-authored
+ *   dishes like pizza dough or fryer-batch tempura). These are divided into
+ *   per-portion values at load time.
+ * - Legacy flat entries (pre-2026-04-12, just a `kg_per_unit`-shaped object
+ *   with no `style` wrapper) are supported for backwards compatibility.
+ *
+ * Internal consumers (`computePeriodClose`) only see the normalized
+ * `NormalizedRecipeBook` — a flat dish → ingredient → kg-per-portion map.
+ *
+ * See docs/superpowers/specs/2026-04-12-pos-back-calculation-design.md.
+ */
+interface RawDirectRecipe {
+  style: "raw_direct";
+  method?: string;
+  notes?: string;
+  kg_per_unit: Partial<Record<RawIngredient, number>>;
+}
+interface BatchRecipe {
+  style: "batch";
+  method?: string;
+  notes?: string;
+  portions: number;
+  raw_inputs_kg: Partial<Record<RawIngredient, number>>;
+}
+type RecipeEntry =
+  | RawDirectRecipe
+  | BatchRecipe
+  | Partial<Record<RawIngredient, number>>; // legacy flat
+
+interface RawRecipeBook {
+  _comment?: string;
+  dishes: Record<string, RecipeEntry>;
+}
+
+interface NormalizedRecipeBook {
   dishes: Record<string, Partial<Record<RawIngredient, number>>>;
 }
 
-function loadRecipes(): RecipeBook {
-  return JSON.parse(
+/**
+ * Normalize a single recipe entry into the flat `kg_per_unit` shape.
+ * Branches on the entry's shape — no mutation of the input.
+ */
+function normalizeRecipe(
+  entry: RecipeEntry
+): Partial<Record<RawIngredient, number>> {
+  // Batch style: divide raw_inputs_kg by portions.
+  if (
+    typeof entry === "object" &&
+    entry !== null &&
+    "raw_inputs_kg" in entry &&
+    "portions" in entry
+  ) {
+    const batch = entry as BatchRecipe;
+    if (batch.portions <= 0) {
+      throw new Error(`Batch recipe has non-positive portions: ${batch.portions}`);
+    }
+    const result: Partial<Record<RawIngredient, number>> = {};
+    for (const [ing, totalKg] of Object.entries(batch.raw_inputs_kg) as [
+      RawIngredient,
+      number
+    ][]) {
+      result[ing] = totalKg / batch.portions;
+    }
+    return result;
+  }
+  // Raw-direct style: pass through kg_per_unit.
+  if (
+    typeof entry === "object" &&
+    entry !== null &&
+    "kg_per_unit" in entry
+  ) {
+    return (entry as RawDirectRecipe).kg_per_unit;
+  }
+  // Legacy flat: treat the entry itself as the kg_per_unit map.
+  return entry as Partial<Record<RawIngredient, number>>;
+}
+
+function loadRecipes(): NormalizedRecipeBook {
+  const raw: RawRecipeBook = JSON.parse(
     readFileSync(resolve(__dirname, "../recipes.json"), "utf8")
   );
+  const dishes: NormalizedRecipeBook["dishes"] = {};
+  for (const [name, entry] of Object.entries(raw.dishes)) {
+    dishes[name] = normalizeRecipe(entry);
+  }
+  return { dishes };
 }
 
 export class KitchenAgent {
   private readonly kitchenId: "A" | "B" | "C";
-  private readonly recipes: RecipeBook;
+  private readonly recipes: NormalizedRecipeBook;
   private readonly purchased: Record<RawIngredient, number> = {
     RICE: 0,
     PASTA: 0,

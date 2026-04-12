@@ -1,15 +1,65 @@
 {
-  "_comment": "Static recipe book for Kitchen Agent back-calculation. kg_per_unit values are approximate and should be refined from CoFID (Composition of Foods Integrated Dataset) before any real deployment. For the hackathon demo, they just need to be internally consistent.",
+  "_comment": "Recipe book for Kitchen Agent back-calculation. Dual-schema: raw_direct dishes specify kg_per_unit directly (authored by someone who already knows raw weights per portion); batch dishes specify raw_inputs_kg + portions (authored by a chef who thinks 'I used X kg of flour to make Y pizzas'). Both are normalized to the same internal shape in kitchen.ts#loadRecipes. See docs/superpowers/specs/2026-04-12-pos-back-calculation-design.md for the full rationale and the deferred pass-3 work (yield_ratio audit, per-ingredient mass balance, substitution ledger, recipe versioning).",
   "dishes": {
-    "risotto":        { "RICE":  0.12, "OIL":   0.01 },
-    "paella":         { "RICE":  0.14, "OIL":   0.02 },
-    "spaghetti_bol":  { "PASTA": 0.10, "OIL":   0.01 },
-    "penne_arrabb":   { "PASTA": 0.10, "OIL":   0.01 },
-    "lasagna":        { "PASTA": 0.15, "FLOUR": 0.02, "OIL": 0.01 },
-    "pizza_margh":    { "FLOUR": 0.22, "OIL":   0.01 },
-    "focaccia":       { "FLOUR": 0.18, "OIL":   0.03 },
-    "bao":            { "FLOUR": 0.08, "OIL":   0.005 },
-    "tempura":        { "FLOUR": 0.04, "OIL":   0.05 },
-    "churros":        { "FLOUR": 0.06, "OIL":   0.04 }
+    "risotto": {
+      "style": "raw_direct",
+      "method": "simmer",
+      "kg_per_unit": { "RICE": 0.12, "OIL": 0.01 }
+    },
+    "paella": {
+      "style": "raw_direct",
+      "method": "simmer",
+      "kg_per_unit": { "RICE": 0.14, "OIL": 0.02 }
+    },
+    "spaghetti_bol": {
+      "style": "raw_direct",
+      "method": "boil",
+      "kg_per_unit": { "PASTA": 0.10, "OIL": 0.01 }
+    },
+    "penne_arrabb": {
+      "style": "raw_direct",
+      "method": "boil",
+      "kg_per_unit": { "PASTA": 0.10, "OIL": 0.01 }
+    },
+    "lasagna": {
+      "style": "raw_direct",
+      "method": "bake",
+      "kg_per_unit": { "PASTA": 0.15, "FLOUR": 0.02, "OIL": 0.01 }
+    },
+    "pizza_margh": {
+      "style": "batch",
+      "method": "wood_fired_oven",
+      "portions": 10,
+      "raw_inputs_kg": { "FLOUR": 2.2, "OIL": 0.1 },
+      "notes": "One dough mix yields 10 pizzas"
+    },
+    "focaccia": {
+      "style": "batch",
+      "method": "bake",
+      "portions": 16,
+      "raw_inputs_kg": { "FLOUR": 2.88, "OIL": 0.48 },
+      "notes": "Full sheet pan, cut into 16 portions"
+    },
+    "bao": {
+      "style": "batch",
+      "method": "steam",
+      "portions": 40,
+      "raw_inputs_kg": { "FLOUR": 3.2, "OIL": 0.2 },
+      "notes": "40 buns per dough mix"
+    },
+    "tempura": {
+      "style": "batch",
+      "method": "deep_fry",
+      "portions": 25,
+      "raw_inputs_kg": { "FLOUR": 1.0, "OIL": 1.25 },
+      "notes": "OIL is net oil consumed per batch (absorbed into food + disposed after quality threshold), not full fryer volume"
+    },
+    "churros": {
+      "style": "batch",
+      "method": "deep_fry",
+      "portions": 30,
+      "raw_inputs_kg": { "FLOUR": 1.8, "OIL": 1.2 },
+      "notes": "30 pieces from one dough batch"
+    }
   }
 }
