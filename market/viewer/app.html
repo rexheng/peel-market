@@ -502,9 +502,9 @@
       <div class="subtitle">live · three agents · testnet</div>
     </div>
     <div class="meta">
-      <span class="live"><span class="dot"></span>live</span>
-      <span id="trades-today">4 trades settled today</span>
-      <span>updated 14:03:12 UTC</span>
+      <span class="live"><span class="dot"></span><span class="label">connecting</span></span>
+      <span id="trades-today">· trades today</span>
+      <span id="updated-time">updated —</span>
     </div>
   </header>
 
@@ -522,95 +522,84 @@
 
   <script>
     /* ===============================================================
-       MOCK DATA — hand-written. Commit 4 replaces this with /state.
-       =============================================================== */
-    const MOCK = {
-      kitchens: {
-        A: {
-          id: "A", accountId: "0.0.8598874",
-          displayName: "Dishoom", branch: "Shoreditch",
-          tagline: "Bombay comfort food, all day",
-          cuisine: "Indian",
-          addressLine: "7 Boundary St",
-          postcode: "London E2 7JE",
-          lat: 51.5253, lng: -0.0766,
-          accent: "#A8D66B"
-        },
-        B: {
-          id: "B", accountId: "0.0.8598877",
-          displayName: "Pret a Manger", branch: "Borough High St",
-          tagline: "Fresh sandwiches, made daily",
-          cuisine: "Café / deli",
-          addressLine: "15 Borough High St",
-          postcode: "London SE1 9SE",
-          lat: 51.5043, lng: -0.0909,
-          accent: "#F4A39A"
-        },
-        C: {
-          id: "C", accountId: "0.0.8598879",
-          displayName: "Wagamama", branch: "Covent Garden",
-          tagline: "Ramen, katsu & donburi",
-          cuisine: "Japanese",
-          addressLine: "1a Tavistock St",
-          postcode: "London WC2E 7PG",
-          lat: 51.5117, lng: -0.1225,
-          accent: "#5E8C6A"
-        }
-      },
-
-      offers: [
-        { offerId: "off_a1", kitchenId: "A", ingredient: "RICE",  qtyKg: 12, pricePerKgHbar: 0.90, hashscanUrl: "https://hashscan.io/testnet/topic/0.0.8598886/message/42" },
-        { offerId: "off_b1", kitchenId: "B", ingredient: "PASTA", qtyKg:  8, pricePerKgHbar: 1.10, hashscanUrl: "https://hashscan.io/testnet/topic/0.0.8598886/message/45" }
-        // C has no open offers → "No open offers"
-      ],
-
-      // Each trade has sellerId/buyerId resolved to kitchen letters. For the
-      // demo the agoSec is hand-written; real data uses consensus_timestamp.
-      trades: [
-        { tradeId: "t_1", sellerId: "A", buyerId: "B", ingredient: "RICE",  qtyKg: 12, totalHbar: 10.80, agoSec: 120, hashscanUrl: "https://hashscan.io/testnet/transaction/0.0.8598874-1775951871-001001001" },
-        { tradeId: "t_2", sellerId: "B", buyerId: "A", ingredient: "PASTA", qtyKg:  8, totalHbar:  8.40, agoSec: 260, hashscanUrl: "https://hashscan.io/testnet/transaction/0.0.8598877-1775951745-002002002" },
-        { tradeId: "t_3", sellerId: "A", buyerId: "C", ingredient: "FLOUR", qtyKg:  5, totalHbar:  4.75, agoSec: 480, hashscanUrl: "https://hashscan.io/testnet/transaction/0.0.8598874-1775951510-003003003" },
-        { tradeId: "t_4", sellerId: "C", buyerId: "A", ingredient: "OIL",   qtyKg:  3, totalHbar:  2.70, agoSec: 900, hashscanUrl: "https://hashscan.io/testnet/transaction/0.0.8598879-1775951100-004004004" }
-      ],
-
-      transcript: [
-        { kitchenId: "A", agoSec:  30, thought: "My RICE line is 22 kg long against the three-day forecast. Posting 12 kg at 0.9 ℏ/kg — that's 10% below my ceiling but still above the policy floor, so it's a fair opening." },
-        { kitchenId: "B", agoSec:  90, thought: "Dishoom's rice offer clears my surplus threshold for tomorrow's bowls. Counter-proposing at 0.90 flat — I'll take the full 12 kg." },
-        { kitchenId: "A", agoSec: 120, thought: "Pret's counter matches my floor exactly. Accepting. Executing the atomic transfer — tokens out, HBAR in, single transaction." },
-        { kitchenId: "C", agoSec: 180, thought: "I'm balanced on rice and pasta today. Only the flour line is trending heavy for Thursday service — holding the book and waiting for a decent counter before I post." },
-        { kitchenId: "B", agoSec: 240, thought: "Trade settled. 12 kg RICE landed from Dishoom and the HBAR leg cleared in the same transaction. Waste forecast is back within tolerance." },
-        { kitchenId: "A", agoSec: 300, thought: "FLOUR inventory at 18 kg — I'll need more before tomorrow's dinner service. Scanning the market topic for an open offer from one of the peers." }
-      ]
+       STATE — populated by pollState() from GET /state
+       ===============================================================
+       Shape expected from the server (market/viewer/app-server.ts):
+         {
+           updatedAt: "ISO string",
+           pollCount: number,
+           kitchenProfiles: { A: KitchenProfile, B: ..., C: ... },
+           tradesSettledToday: number,
+           trades: TradeRow[],        // OFFER/PROPOSAL/TRADE_EXECUTED/UNKNOWN
+           transcript: TranscriptRow[],
+           topics: { MARKET_TOPIC, TRANSCRIPT_TOPIC },
+           error: string | null
+         }
+       /state is privacy-clean (no inventory, no balances, no forecast).
+    */
+    let STATE = {
+      kitchenProfiles: { A: null, B: null, C: null },
+      trades: [],
+      transcript: [],
+      tradesSettledToday: 0,
+      updatedAt: null,
+      error: null
     };
 
+    // accountId → "A" | "B" | "C", rebuilt from kitchenProfiles on every
+    // successful poll. Used for resolving envelopes whose kitchen field
+    // only carries an account id.
+    let ACCOUNT_TO_KID = {};
+    function rebuildAccountMap() {
+      ACCOUNT_TO_KID = {};
+      for (const kid of ["A", "B", "C"]) {
+        const p = STATE.kitchenProfiles[kid];
+        if (p && p.accountId) ACCOUNT_TO_KID[p.accountId] = kid;
+      }
+    }
+
     /* ===============================================================
-       DATA DERIVATIONS
+       DATA DERIVATIONS — all read from STATE
        =============================================================== */
+
+    // "Open offers" for a kitchen = OFFER envelopes this kitchen published.
+    // EXTEND: a true "open" filter drops offers that already have a matching
+    //         TRADE_EXECUTED. That requires the server to surface offerId on
+    //         OFFER rows (it doesn't yet). For the demo we show the N most
+    //         recent OFFER envelopes from this kitchen regardless of
+    //         settlement status — the popup caps the display at 3 rows
+    //         anyway, so even a very chatty kitchen stays readable.
     function offersForKitchen(kid) {
-      return MOCK.offers.filter(o => o.kitchenId === kid);
-    }
-
-    function settlementsForKitchen(kid) {
-      // A "settlement" in the per-kitchen popup is any trade this kitchen
-      // participated in (seller OR buyer), newest first.
-      return MOCK.trades
-        .filter(t => t.sellerId === kid || t.buyerId === kid)
+      const profile = STATE.kitchenProfiles[kid];
+      if (!profile) return [];
+      return STATE.trades
+        .filter(t => t.kind === "OFFER" && t.kitchenAccountId === profile.accountId)
         .slice()
-        .sort((a, b) => a.agoSec - b.agoSec);
+        .sort((a, b) => b.seq - a.seq);
     }
 
+    // Trades where this kitchen was seller OR buyer, newest first.
+    function settlementsForKitchen(kid) {
+      return STATE.trades
+        .filter(t =>
+          t.kind === "TRADE_EXECUTED" &&
+          (t.sellerKitchenId === kid || t.buyerKitchenId === kid)
+        )
+        .slice()
+        .sort((a, b) => b.seq - a.seq);
+    }
+
+    // Aggregate flow between `kid` and one peer, either direction.
     function laneFor(kid, peerId) {
-      // Aggregate trades between this kitchen and one peer, either direction.
-      const lane = MOCK.trades.filter(t =>
-        (t.sellerId === kid && t.buyerId === peerId) ||
-        (t.sellerId === peerId && t.buyerId === kid)
+      const lane = STATE.trades.filter(t =>
+        t.kind === "TRADE_EXECUTED" &&
+        ((t.sellerKitchenId === kid && t.buyerKitchenId === peerId) ||
+         (t.sellerKitchenId === peerId && t.buyerKitchenId === kid))
       );
       if (!lane.length) return { count: 0, qtyKg: 0, totalHbar: 0, recent: null, ingredient: null };
-      // Sum up flows; for the ingredient label we use the most-recent trade's
-      // ingredient (in the demo the lanes are single-ingredient anyway).
       let qtyKg = 0, totalHbar = 0;
       for (const t of lane) { qtyKg += t.qtyKg; totalHbar += t.totalHbar; }
-      const recent = lane.slice().sort((a, b) => a.agoSec - b.agoSec)[0];
+      const recent = lane.slice().sort((a, b) => b.seq - a.seq)[0];
       return {
         count: lane.length,
         qtyKg: Math.round(qtyKg * 10) / 10,
@@ -620,15 +609,20 @@
       };
     }
 
-    function relTime(sec) {
-      if (sec < 60) return `${sec}s ago`;
-      if (sec < 3600) return `${Math.round(sec / 60)}m ago`;
-      if (sec < 86400) return `${Math.round(sec / 3600)}h ago`;
-      return `${Math.round(sec / 86400)}d ago`;
+    // Relative time from a mirror-node consensus_timestamp string
+    // (e.g. "1775951724.607874504" seconds.nanos).
+    function relTimeFromTs(consensusTimestamp) {
+      const sec = parseFloat(consensusTimestamp);
+      if (!Number.isFinite(sec)) return "";
+      const ago = Math.max(0, Math.round((Date.now() - sec * 1000) / 1000));
+      if (ago < 60) return `${ago}s ago`;
+      if (ago < 3600) return `${Math.round(ago / 60)}m ago`;
+      if (ago < 86400) return `${Math.round(ago / 3600)}h ago`;
+      return `${Math.round(ago / 86400)}d ago`;
     }
 
     function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, c => ({
+      return String(s ?? "").replace(/[&<>"']/g, c => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       }[c]));
     }
@@ -639,7 +633,7 @@
     function buildHeader(k) {
       return `
         <div class="card-header">
-          <div class="accent-pill" style="background: ${k.accent};"></div>
+          <div class="accent-pill" style="background: ${escapeHtml(k.accent)};"></div>
           <div>
             <div class="name serif">${escapeHtml(k.displayName)}</div>
             <div class="branch mono">${escapeHtml(k.branch.toUpperCase())} · ${escapeHtml(k.postcode)}</div>
@@ -659,9 +653,9 @@
         const extra = offers.length - shown.length;
         body = shown.map(o => `
           <div class="offer-row">
-            <span class="ing">${o.ingredient}</span>
+            <span class="ing">${escapeHtml(o.ingredient)}</span>
             <span class="grow">${o.qtyKg} kg @ ${o.pricePerKgHbar.toFixed(2)} ℏ/kg</span>
-            <a class="hs-chip" href="${o.hashscanUrl}" target="_blank" rel="noopener">↗ HS</a>
+            <a class="hs-chip" href="${escapeHtml(o.hashscanUrl)}" target="_blank" rel="noopener">↗ HS</a>
           </div>
         `).join("");
         if (extra > 0) body += `<div class="more">· +${extra} more</div>`;
@@ -675,21 +669,20 @@
     }
 
     function buildNetworkSection(kid) {
-      const me = MOCK.kitchens[kid];
+      const me = STATE.kitchenProfiles[kid];
+      if (!me) return "";
       const peerIds = ["A", "B", "C"].filter(id => id !== kid);
-      const [p1, p2] = peerIds.map(id => MOCK.kitchens[id]);
-      const lane1 = laneFor(kid, p1.id);
-      const lane2 = laneFor(kid, p2.id);
+      const p1 = STATE.kitchenProfiles[peerIds[0]];
+      const p2 = STATE.kitchenProfiles[peerIds[1]];
+      if (!p1 || !p2) return "";
+      const lane1 = laneFor(kid, peerIds[0]);
+      const lane2 = laneFor(kid, peerIds[1]);
 
-      // Viewbox / anchor math
+      // Viewbox / anchor math (unchanged from C2 mockup).
       const W = 320, H = 190;
       const cx = W / 2, cy = 42;               // center node (me) top-center
       const l1x = 50,  l1y = 142;              // peer 1 bottom-left
       const l2x = W - 50, l2y = 142;           // peer 2 bottom-right
-
-      // Edge anchors for HTML-overlay labels — sit 62% of the way from me
-      // toward each peer, which separates the two labels enough to avoid
-      // the 360px popup's center-crowd problem.
       const T = 0.62;
       const mid1 = { x: cx + (l1x - cx) * T, y: cy + (l1y - cy) * T };
       const mid2 = { x: cx + (l2x - cx) * T, y: cy + (l2y - cy) * T };
@@ -709,7 +702,7 @@
         const tradeWord = lane.count === 1 ? "trade" : "trades";
         return `
           <span class="edge-label">${lane.qtyKg} kg · ${lane.totalHbar.toFixed(1)} ℏ · ${lane.count} ${tradeWord}</span>
-          <a class="hs-chip" href="${lane.recent.hashscanUrl}" target="_blank" rel="noopener">↗ HS</a>
+          <a class="hs-chip" href="${escapeHtml(lane.recent.hashscanUrl)}" target="_blank" rel="noopener">↗ HS</a>
         `;
       };
 
@@ -732,15 +725,15 @@
 
               <!-- Peer 1 -->
               <circle cx="${l1x}" cy="${l1y}" r="18" fill="#ffffff" stroke="${p1.accent}" stroke-width="2.5"/>
-              <text x="${l1x}" y="${l1y + 4}" text-anchor="middle" font-family="DM Mono, monospace" font-size="12" font-weight="600" fill="#2a3326">${p1.id}</text>
+              <text x="${l1x}" y="${l1y + 4}" text-anchor="middle" font-family="DM Mono, monospace" font-size="12" font-weight="600" fill="#2a3326">${peerIds[0]}</text>
 
               <!-- Peer 2 -->
               <circle cx="${l2x}" cy="${l2y}" r="18" fill="#ffffff" stroke="${p2.accent}" stroke-width="2.5"/>
-              <text x="${l2x}" y="${l2y + 4}" text-anchor="middle" font-family="DM Mono, monospace" font-size="12" font-weight="600" fill="#2a3326">${p2.id}</text>
+              <text x="${l2x}" y="${l2y + 4}" text-anchor="middle" font-family="DM Mono, monospace" font-size="12" font-weight="600" fill="#2a3326">${peerIds[1]}</text>
 
               <!-- Center (me) -->
               <circle cx="${cx}" cy="${cy}" r="24" fill="${me.accent}" stroke="#ffffff" stroke-width="3"/>
-              <text x="${cx}" y="${cy + 5}" text-anchor="middle" font-family="DM Mono, monospace" font-size="14" font-weight="700" fill="#1f2a1c">${me.id}</text>
+              <text x="${cx}" y="${cy + 5}" text-anchor="middle" font-family="DM Mono, monospace" font-size="14" font-weight="700" fill="#1f2a1c">${kid}</text>
             </svg>
 
             <div class="node-label" style="left: ${(cx / W) * 100}%; top: ${(cy + 30) / H * 100}%;">${escapeHtml(me.displayName)}</div>
@@ -762,16 +755,17 @@
       } else {
         const shown = settles.slice(0, 3);
         body = shown.map(t => {
-          const counterpartyId = t.sellerId === kid ? t.buyerId : t.sellerId;
-          const counterparty = MOCK.kitchens[counterpartyId].displayName;
-          const arrow = t.sellerId === kid ? "→" : "←";
+          const counterpartyId = t.sellerKitchenId === kid ? t.buyerKitchenId : t.sellerKitchenId;
+          const counterpartyProfile = counterpartyId ? STATE.kitchenProfiles[counterpartyId] : null;
+          const counterpartyName = counterpartyProfile ? counterpartyProfile.displayName : "unknown";
+          const arrow = t.sellerKitchenId === kid ? "→" : "←";
           return `
             <div class="settle-row">
-              <span class="ts">${relTime(t.agoSec)}</span>
-              <span class="ing">${t.ingredient}</span>
-              <span class="grow">${t.qtyKg} kg ${arrow} ${escapeHtml(counterparty)}</span>
+              <span class="ts">${relTimeFromTs(t.consensusTimestamp)}</span>
+              <span class="ing">${escapeHtml(t.ingredient)}</span>
+              <span class="grow">${t.qtyKg} kg ${arrow} ${escapeHtml(counterpartyName)}</span>
               <span class="amount">${t.totalHbar.toFixed(2)} ℏ</span>
-              <a class="hs-chip" href="${t.hashscanUrl}" target="_blank" rel="noopener">↗ HS</a>
+              <a class="hs-chip" href="${escapeHtml(t.hashscanUrl)}" target="_blank" rel="noopener">↗ HS</a>
             </div>
           `;
         }).join("");
@@ -785,7 +779,10 @@
     }
 
     function buildPopupHTML(kid) {
-      const k = MOCK.kitchens[kid];
+      const k = STATE.kitchenProfiles[kid];
+      if (!k) {
+        return `<div class="card"><div class="card-header"><div>Loading…</div></div></div>`;
+      }
       return `
         <div class="card">
           ${buildHeader(k)}
@@ -801,15 +798,34 @@
        =============================================================== */
     function renderDrawer() {
       const el = document.getElementById("drawer-body");
-      // Newest first.
-      const ordered = MOCK.transcript.slice().sort((a, b) => a.agoSec - b.agoSec);
+      if (!el) return;
+      // Newest first. Server returns transcript in consensus order (asc)
+      // so we sort by seq DESC to put the latest thought at the top.
+      const ordered = STATE.transcript.slice().sort((a, b) => b.seq - a.seq);
+      if (!ordered.length) {
+        el.innerHTML = `<div style="color: var(--ink-mute); font-style: italic; padding: 18px 0;">No reasoning published yet — agents are booting or idle</div>`;
+        return;
+      }
       el.innerHTML = ordered.map(entry => {
-        const k = MOCK.kitchens[entry.kitchenId];
+        const kid = entry.kitchenId;
+        const profile = kid ? STATE.kitchenProfiles[kid] : null;
+        const ts = relTimeFromTs(entry.consensusTimestamp);
+        if (!profile) {
+          return `
+            <div class="thought-entry">
+              <div class="ts-col">${ts}</div>
+              <div class="body-col">
+                <div class="who"><span class="dot" style="background: var(--ink-mute);"></span>unknown kitchen</div>
+                <div class="thought">${escapeHtml(entry.thought)}</div>
+              </div>
+            </div>
+          `;
+        }
         return `
-          <div class="thought-entry k-${entry.kitchenId}">
-            <div class="ts-col">${relTime(entry.agoSec)}</div>
+          <div class="thought-entry k-${kid}">
+            <div class="ts-col">${ts}</div>
             <div class="body-col">
-              <div class="who"><span class="dot"></span>${escapeHtml(k.displayName)} · ${escapeHtml(k.branch)}</div>
+              <div class="who"><span class="dot"></span>${escapeHtml(profile.displayName)} · ${escapeHtml(profile.branch)}</div>
               <div class="thought">${escapeHtml(entry.thought)}</div>
             </div>
           </div>
@@ -818,7 +834,42 @@
     }
 
     /* ===============================================================
-       MAP
+       TOPBAR
+       =============================================================== */
+    function renderTopbar() {
+      const n = STATE.tradesSettledToday ?? 0;
+      const tradesEl = document.getElementById("trades-today");
+      if (tradesEl) tradesEl.textContent = `${n} trade${n === 1 ? "" : "s"} settled today`;
+
+      const updatedEl = document.getElementById("updated-time");
+      if (updatedEl && STATE.updatedAt) {
+        const dt = new Date(STATE.updatedAt);
+        const hh = String(dt.getUTCHours()).padStart(2, "0");
+        const mm = String(dt.getUTCMinutes()).padStart(2, "0");
+        const ss = String(dt.getUTCSeconds()).padStart(2, "0");
+        updatedEl.textContent = `updated ${hh}:${mm}:${ss} UTC`;
+      }
+
+      // Flip the live dot to coral when /state fetches fail. Keep last
+      // snapshot visible — we just change the indicator so it's obvious
+      // the data is stale.
+      const dot = document.querySelector("header.topbar .meta .live .dot");
+      const liveLabel = document.querySelector("header.topbar .meta .live .label");
+      if (dot && liveLabel) {
+        if (STATE.error) {
+          dot.style.background = "var(--coral)";
+          dot.style.animation = "none";
+          liveLabel.textContent = "offline";
+        } else {
+          dot.style.background = "";
+          dot.style.animation = "";
+          liveLabel.textContent = "live";
+        }
+      }
+    }
+
+    /* ===============================================================
+       MAP + PINS
        =============================================================== */
     // Token placeholder — app-server.ts replaces the string literal below
     // with process.env.MAPBOX_TOKEN at request time so the token is never
@@ -833,39 +884,107 @@
       attributionControl: true,
       cooperativeGestures: false
     });
-
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
 
-    function buildPin(k) {
-      // Active = has any trade in the last 300s. Mockup hardcodes: A & B active, C idle.
-      const recentThreshold = 300;
-      const isActive = MOCK.trades.some(t =>
-        (t.sellerId === k.id || t.buyerId === k.id) && t.agoSec <= recentThreshold
-      );
+    const markers = { A: null, B: null, C: null };
+    const popups = { A: null, B: null, C: null };
+
+    function buildPin(profile, kid) {
       const el = document.createElement("div");
-      el.className = `pin k-${k.id}${isActive ? " active" : ""}`;
-      el.innerHTML = `<span class="dot"></span><span class="name">${escapeHtml(k.displayName)}</span>`;
+      el.className = `pin k-${kid}`;
+      el.innerHTML = `<span class="dot"></span><span class="name">${escapeHtml(profile.displayName)}</span>`;
       return el;
     }
 
-    map.on("load", () => {
-      for (const k of Object.values(MOCK.kitchens)) {
-        const el = buildPin(k);
+    // Create markers exactly once, after the first /state has populated
+    // kitchenProfiles. Subsequent polls only refresh popup HTML + pin
+    // activity state.
+    function ensureMarkers() {
+      if (markers.A && markers.B && markers.C) return;
+      for (const kid of ["A", "B", "C"]) {
+        if (markers[kid]) continue;
+        const profile = STATE.kitchenProfiles[kid];
+        if (!profile) continue;
+        const el = buildPin(profile, kid);
         const popup = new mapboxgl.Popup({
           offset: 18,
           closeButton: true,
           closeOnClick: true,
           maxWidth: "380px"
-        }).setHTML(buildPopupHTML(k.id));
-
-        new mapboxgl.Marker({ element: el, anchor: "bottom" })
-          .setLngLat([k.lng, k.lat])
+        }).setHTML(buildPopupHTML(kid));
+        const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
+          .setLngLat([profile.lng, profile.lat])
           .setPopup(popup)
           .addTo(map);
+        markers[kid] = marker;
+        popups[kid] = popup;
       }
-    });
+    }
 
-    renderDrawer();
+    // Pulse a pin when the kitchen participated in a trade within the last
+    // 5 minutes. Purely visual — drives the .active class on the pin DOM.
+    function refreshMarkerActivity() {
+      const nowMs = Date.now();
+      const WINDOW_MS = 5 * 60 * 1000;
+      for (const kid of ["A", "B", "C"]) {
+        const marker = markers[kid];
+        if (!marker) continue;
+        const el = marker.getElement();
+        const hasRecent = STATE.trades.some(t => {
+          if (t.kind !== "TRADE_EXECUTED") return false;
+          if (t.sellerKitchenId !== kid && t.buyerKitchenId !== kid) return false;
+          const sec = parseFloat(t.consensusTimestamp);
+          return Number.isFinite(sec) && nowMs - sec * 1000 < WINDOW_MS;
+        });
+        el.classList.toggle("active", hasRecent);
+      }
+    }
+
+    // Refresh popup HTML in place. Mapbox's Popup.setHTML updates the
+    // already-open popup DOM if one is open, and is used as the content
+    // on the next click if the popup is closed. Either way, the view
+    // stays fresh against the latest /state without us tearing down and
+    // recreating the popup object.
+    function refreshAllPopups() {
+      for (const kid of ["A", "B", "C"]) {
+        const popup = popups[kid];
+        if (popup) popup.setHTML(buildPopupHTML(kid));
+      }
+    }
+
+    /* ===============================================================
+       POLL LOOP — GET /state every 3s
+       =============================================================== */
+    const POLL_INTERVAL_MS = 3000;
+
+    async function pollState() {
+      try {
+        const resp = await fetch("/state", { cache: "no-store" });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const next = await resp.json();
+        STATE = Object.assign({}, STATE, next, { error: null });
+        rebuildAccountMap();
+        ensureMarkers();
+        renderTopbar();
+        renderDrawer();
+        refreshMarkerActivity();
+        refreshAllPopups();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[h8] /state poll failed:", msg);
+        STATE = Object.assign({}, STATE, { error: msg });
+        renderTopbar();
+        // Don't clobber the drawer / markers on failure — keep the last
+        // good snapshot visible and just flip the status indicator.
+      }
+    }
+
+    // Kick off after the map has finished its first render so marker
+    // creation has a valid map to attach to. Then poll on a 3s interval.
+    map.on("load", () => {
+      void pollState();
+      setInterval(() => { void pollState(); }, POLL_INTERVAL_MS);
+    });
   </script>
 </body>
 </html>
