@@ -18,6 +18,17 @@ Mistake patterns observed during Peel development. Each entry: what happened, wh
 
 **What to do instead:** When blocked, classify the unblocker. Test: would a staff engineer pause to approve this? If yes → brainstorming gate applies. If no → execute immediately and report what was done. Always update handoff docs after mechanical fixes.
 
+## 2026-04-12 · peel-market node_modules silently loses transitive packages between sessions
+
+**What happened (twice now):** Between sessions, peel-market's node_modules silently loses a chunk of transitive packages. In the prior session it lost 167+ packages (partial wipe, per earlier Blockers note). In the overnight session on 2026-04-12, running `npm run h5:trade` failed with `ERR_MODULE_NOT_FOUND: Cannot find package '@cfworker/json-schema'` — a direct dep of `@langchain/core@1.1.39`. node_modules had `@langchain/core` itself but not `@cfworker/`. A clean `npm install` (no package.json edit, no --force) added 66 packages and restored the missing directory. The fix is reliable.
+
+**Why this matters:** H5/H6 verification is LLM-bearing and every code path through `@langchain/core tools/index.js` trips on this. It is NOT an H5 code bug — the same breakage would hit any script that constructs a LangChain agent. A session that starts with `npm run typecheck` passing can still fail at first runtime because `tsc` doesn't hit transitive import resolution.
+
+**What to do instead:**
+1. At the start of any session that will run LLM-bearing scripts (h1:smoke, h3:one-kitchen, h4:scan, h5:trade, h6:three-kitchen), do a cheap diagnostic FIRST: `ls market/node_modules/@cfworker/` (or any other transitive marker). If it's missing, run `npm install` (no args) BEFORE burning Groq tokens on a failing run.
+2. `npm install` here is a state repair, not a dep edit. It does not violate the "no npm install unless unavoidable" rule when used to reconcile node_modules to a valid lockfile state. The rule is about unintentional dep drift, not about fixing a broken install.
+3. The ROOT CAUSE is still unknown after two occurrences. Candidate causes: Windows filesystem quirks, collision with parallel Terminal 2 on the peel-programme worktree (they share `package.json` via the git worktree but have separate node_modules), antivirus, or a failed `npm dedupe` run. Worth investigating before the demo — logging what's present at session start and what's missing at next boot would narrow it down.
+
 ## 2026-04-11 · `hedera-agent-kit` forces exact version pins on shared deps
 
 **What happened:** Declared shared langchain/SDK deps with `^` in `package.json`. Ended up with nested duplicates of `@langchain/core` and `@langchain/openai` inside `node_modules/hedera-agent-kit/node_modules/`. This would have broken tool `instanceof` checks at runtime.
