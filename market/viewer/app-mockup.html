@@ -817,9 +817,10 @@
     /* ===============================================================
        MAP
        =============================================================== */
-    // Static mockup: token embedded directly. The live app.html (C4) will
-    // get this injected from process.env via app-server.ts at request time.
-    mapboxgl.accessToken = "pk.eyJ1IjoidmFycmExMjMiLCJhIjoiY21sd2lydGxhMGl4MzNkczF1Mnd3dDM4NyJ9.e9IfTG09ttBDly1aTtr4TA";
+    // Token placeholder — same as app.html. To use the mockup standalone,
+    // serve it through app-server.ts (which injects MAPBOX_TOKEN from env)
+    // or replace this placeholder manually for local eyeballing.
+    mapboxgl.accessToken = "__MAPBOX_TOKEN__";
 
     const map = new mapboxgl.Map({
       container: "map",
