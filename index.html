@@ -389,7 +389,7 @@ ul { list-style: none; }
   display: inline-flex;
   align-items: center;
   gap: 0.7rem;
-  padding: 0.95rem 1.6rem;
+  padding: 0.85rem 1.35rem 0.85rem 0.95rem;
   background: var(--paper-2);
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
@@ -402,29 +402,19 @@ ul { list-style: none; }
   transition: background .3s var(--ease-out-quart), border-color .3s, transform .3s;
 }
 .pos-card:hover {
-  background: var(--paper-3);
+  background: var(--paper);
   border-color: var(--lime-deep);
   transform: translateY(-1px);
 }
-.pos-card__dot {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 50%;
-  background: var(--lime-deep);
-  box-shadow: 0 0 0 3px var(--lime);
+.pos-card__logo {
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
-}
-.pos-card__tag {
-  font-family: "DM Sans", sans-serif;
-  font-size: 0.64rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--forest-3);
-  padding: 0.18rem 0.5rem;
-  border-radius: 4px;
+  object-fit: contain;
+  border-radius: 6px;
   background: var(--paper);
-  margin-left: 0.2rem;
+  padding: 3px;
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -436,7 +426,158 @@ ul { list-style: none; }
 }
 @media (max-width: 640px) {
   .pos-strip__lede { font-size: var(--step-1); }
-  .pos-card { padding: 0.75rem 1.2rem; font-size: var(--step--1); }
+  .pos-card { padding: 0.7rem 1.15rem 0.7rem 0.8rem; font-size: var(--step--1); }
+  .pos-card__logo { width: 22px; height: 22px; }
+}
+
+/* ====================================================================
+   ECOSYSTEM STRIP — where Peel fits in the food-waste stack
+   ==================================================================== */
+.eco-strip {
+  padding-block: var(--space-2xl);
+  background: var(--paper-2);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  position: relative;
+}
+.eco-strip::before {
+  content: "";
+  position: absolute;
+  top: -4px; right: 6%;
+  width: 70px; height: 70px;
+  background: var(--lime);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  opacity: 0.8;
+}
+.eco-strip__head {
+  text-align: center;
+  margin-bottom: var(--space-l);
+  padding-inline: var(--space-m);
+  position: relative;
+}
+.eco-strip__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: var(--step--1);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--forest-2);
+  margin-bottom: var(--space-s);
+}
+.eco-strip__eyebrow::before,
+.eco-strip__eyebrow::after {
+  content: ""; width: 24px; height: 1.5px; background: var(--forest-3);
+}
+.eco-strip__lede {
+  max-width: 26ch;
+  margin: 0 auto var(--space-s);
+  font-family: "Fraunces", serif;
+  font-optical-sizing: auto;
+  font-variation-settings: "SOFT" 50, "opsz" 144, "wght" 500;
+  font-size: var(--step-3);
+  line-height: 0.98;
+  letter-spacing: -0.025em;
+  color: var(--forest);
+}
+.eco-strip__lede em {
+  font-style: italic;
+  font-variation-settings: "SOFT" 100, "opsz" 144, "wght" 400;
+  color: var(--lime-deep);
+}
+.eco-strip__sub {
+  max-width: 58ch;
+  margin: 0 auto;
+  font-size: var(--step-0);
+  line-height: 1.5;
+  color: var(--forest-2);
+}
+.eco-strip__disclaimer {
+  margin-top: var(--space-m);
+  font-size: var(--step--2);
+  color: var(--forest-3);
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+.eco-tiers {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-m);
+  max-width: 1200px;
+  margin: 0 auto var(--space-l);
+  padding-inline: var(--space-m);
+}
+@media (max-width: 1100px) { .eco-tiers { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px)  { .eco-tiers { grid-template-columns: 1fr; } }
+
+.eco-tier {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1.1rem 1.15rem 1.35rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  transition: border-color .3s, transform .3s;
+}
+.eco-tier:hover {
+  border-color: var(--lime-deep);
+  transform: translateY(-2px);
+}
+.eco-tier__label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--forest-3);
+  padding-bottom: 0.55rem;
+  border-bottom: 1px dashed var(--line);
+}
+.eco-tier__title {
+  font-family: "Fraunces", serif;
+  font-variation-settings: "SOFT" 40, "opsz" 60, "wght" 500;
+  font-size: var(--step-0);
+  line-height: 1.2;
+  color: var(--forest);
+  margin-bottom: 0.35rem;
+}
+.eco-tier__desc {
+  font-size: var(--step--1);
+  line-height: 1.45;
+  color: var(--forest-3);
+  margin-bottom: 0.6rem;
+}
+.eco-tier__brands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+.eco-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.7rem 0.4rem 0.45rem;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--forest-2);
+  white-space: nowrap;
+}
+.eco-brand__logo {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: var(--paper);
+  padding: 2px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  flex-shrink: 0;
 }
 
 /* ====================================================================
@@ -1208,25 +1349,25 @@ ul { list-style: none; }
     <div class="pos-marquee">
       <ul class="pos-marquee__track" aria-hidden="true">
         <!-- First copy (visible) -->
-        <li class="pos-card"><span class="pos-card__dot"></span>Square</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>Toast</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>Lightspeed</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>Epos Now</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>Clover</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>Shopify POS</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>Oracle Micros</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>TouchBistro</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>SumUp</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/square.png" alt="" loading="lazy">Square</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/toast.png" alt="" loading="lazy">Toast</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/lightspeed.png" alt="" loading="lazy">Lightspeed</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/epos-now.png" alt="" loading="lazy">Epos Now</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/clover.png" alt="" loading="lazy">Clover</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/shopify.png" alt="" loading="lazy">Shopify POS</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/oracle-micros.png" alt="" loading="lazy">Oracle Micros</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/touchbistro.png" alt="" loading="lazy">TouchBistro</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/sumup.png" alt="" loading="lazy">SumUp</li>
         <!-- Second copy (for seamless loop — duplicated content) -->
-        <li class="pos-card"><span class="pos-card__dot"></span>Square</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>Toast</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>Lightspeed</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>Epos Now</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>Clover</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>Shopify POS</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>Oracle Micros</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>TouchBistro</li>
-        <li class="pos-card"><span class="pos-card__dot"></span>SumUp</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/square.png" alt="" loading="lazy">Square</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/toast.png" alt="" loading="lazy">Toast</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/lightspeed.png" alt="" loading="lazy">Lightspeed</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/epos-now.png" alt="" loading="lazy">Epos Now</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/clover.png" alt="" loading="lazy">Clover</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/shopify.png" alt="" loading="lazy">Shopify POS</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/oracle-micros.png" alt="" loading="lazy">Oracle Micros</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/touchbistro.png" alt="" loading="lazy">TouchBistro</li>
+        <li class="pos-card"><img class="pos-card__logo" src="assets/logos/sumup.png" alt="" loading="lazy">SumUp</li>
       </ul>
     </div>
   </section>
@@ -1417,6 +1558,68 @@ ul { list-style: none; }
           <h3>A ledger your <em>buyers</em> can already read.</h3>
           <p>Hotel groups, universities and contract caterers are on the hook for supply-chain emissions. A public programme ledger lets them cite your performance without a single site visit.</p>
           <span class="tile__foot">CSRD + SBTi aligned</span>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       ECOSYSTEM STRIP — where Peel fits in the food-waste stack
+       ============================================================ -->
+  <section class="eco-strip" aria-label="Food-waste reduction ecosystem">
+    <div class="wrap eco-strip__head on-scroll">
+      <div class="eco-strip__eyebrow">The stack we fit into</div>
+      <h2 class="eco-strip__lede">
+        Peel is <em>one piece</em> of a bigger food-waste stack.
+      </h2>
+      <p class="eco-strip__sub">
+        Consumers shop surplus. Charities redistribute. Scales weigh the bin. Researchers set the standards. Peel adds the layer none of them can: a verifiable measurement of waste at the kitchen level, derived from records the kitchen already keeps.
+      </p>
+      <p class="eco-strip__disclaimer">
+        Illustrative ecosystem alignment — not a claim of paid partnership.
+      </p>
+    </div>
+
+    <div class="wrap">
+      <div class="eco-tiers on-scroll">
+        <article class="eco-tier">
+          <span class="eco-tier__label">Consumer surplus</span>
+          <div class="eco-tier__title">Selling the last-hour tray.</div>
+          <p class="eco-tier__desc">Apps that turn surplus into discounted meals for the people around the corner.</p>
+          <div class="eco-tier__brands">
+            <span class="eco-brand"><img class="eco-brand__logo" src="assets/logos/too-good-to-go.png" alt="" loading="lazy">Too Good To Go</span>
+            <span class="eco-brand"><img class="eco-brand__logo" src="assets/logos/olio.png" alt="" loading="lazy">Olio</span>
+            <span class="eco-brand"><img class="eco-brand__logo" src="assets/logos/karma.png" alt="" loading="lazy">Karma</span>
+            <span class="eco-brand"><img class="eco-brand__logo" src="assets/logos/oddbox.png" alt="" loading="lazy">Oddbox</span>
+          </div>
+        </article>
+
+        <article class="eco-tier">
+          <span class="eco-tier__label">Kitchen measurement</span>
+          <div class="eco-tier__title">AI scales on the bin.</div>
+          <p class="eco-tier__desc">Hardware-led peers that weigh waste at the point of disposal. We derive it from books instead.</p>
+          <div class="eco-tier__brands">
+            <span class="eco-brand"><img class="eco-brand__logo" src="assets/logos/winnow.png" alt="" loading="lazy">Winnow</span>
+            <span class="eco-brand"><img class="eco-brand__logo" src="assets/logos/leanpath.png" alt="" loading="lazy">Leanpath</span>
+          </div>
+        </article>
+
+        <article class="eco-tier">
+          <span class="eco-tier__label">Redistribution</span>
+          <div class="eco-tier__title">Getting surplus to people who need it.</div>
+          <p class="eco-tier__desc">Charities and logistics networks moving unsold food to community kitchens and shelters.</p>
+          <div class="eco-tier__brands">
+            <span class="eco-brand"><img class="eco-brand__logo" src="assets/logos/fareshare.png" alt="" loading="lazy">FareShare</span>
+          </div>
+        </article>
+
+        <article class="eco-tier">
+          <span class="eco-tier__label">Research + policy</span>
+          <div class="eco-tier__title">Setting the yardstick.</div>
+          <p class="eco-tier__desc">Standards bodies measuring the problem and shaping the reporting regimes Peel plugs into.</p>
+          <div class="eco-tier__brands">
+            <span class="eco-brand"><img class="eco-brand__logo" src="assets/logos/wrap.png" alt="" loading="lazy">WRAP</span>
+          </div>
         </article>
       </div>
     </div>
