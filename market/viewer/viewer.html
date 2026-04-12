@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Peel · H3 · Kitchen A</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600&family=DM+Sans:wght@400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper:    oklch(97% 0.01 95);
+      --paper-2:  oklch(95% 0.015 95);
+      --ink:      oklch(25% 0.03 150);
+      --ink-dim:  oklch(55% 0.02 150);
+      --lime:     oklch(87% 0.18 120);
+      --lime-dim: oklch(92% 0.12 120);
+      --forest:   oklch(42% 0.14 145);
+      --coral:    oklch(70% 0.2 30);
+      --mono:     oklch(55% 0.02 145);
+      --border:   oklch(88% 0.015 95);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--paper); color: var(--ink); }
+    body {
+      font-family: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+      padding: 56px 64px 160px;
+      max-width: 960px;
+      margin: 0 auto;
+      line-height: 1.5;
+      font-feature-settings: "ss01", "ss02", "tnum";
+    }
+    .mono { font-family: "DM Mono", "SFMono-Regular", Menlo, monospace; }
+
+    header { border-bottom: 1px solid var(--border); padding-bottom: 28px; margin-bottom: 36px; }
+    h1 {
+      font-family: "Fraunces", Georgia, serif;
+      font-weight: 600;
+      font-size: 44px;
+      margin: 0;
+      letter-spacing: -0.025em;
+      color: var(--ink);
+    }
+    .kitchen-label {
+      font-family: "DM Mono", monospace;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--forest);
+      margin: 10px 0 28px 0;
+      padding-left: 12px;
+      border-left: 3px solid var(--lime);
+    }
+    button#run-tick {
+      font-family: "DM Sans", sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 11px 22px;
+      background: var(--lime);
+      color: var(--forest);
+      border: 1px solid var(--forest);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: transform 0.1s ease, background 0.15s ease;
+      letter-spacing: 0.02em;
+    }
+    button#run-tick:hover:not(:disabled) { transform: translateY(-1px); background: var(--lime-dim); }
+    button#run-tick:active:not(:disabled) { transform: translateY(0); }
+    button#run-tick:disabled { opacity: 0.45; cursor: wait; }
+
+    #transcript {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .event-row {
+      display: flex;
+      gap: 22px;
+      align-items: flex-start;
+    }
+    .event-row .ts {
+      font-family: "DM Mono", monospace;
+      font-size: 12px;
+      color: var(--ink-dim);
+      min-width: 68px;
+      flex-shrink: 0;
+      padding-top: 3px;
+    }
+    .event-row .icon {
+      font-size: 14px;
+      color: var(--forest);
+      min-width: 18px;
+      text-align: center;
+      flex-shrink: 0;
+      padding-top: 2px;
+    }
+    .event-row .body { flex: 1; font-size: 15px; }
+    .event-row .body .muted { color: var(--ink-dim); font-size: 13px; }
+    .event-row .body .strong { font-weight: 500; }
+    .event-row.error { color: var(--coral); }
+    .event-row.error .icon { color: var(--coral); }
+
+    .grid-row {
+      display: grid;
+      grid-template-columns: 60px 1fr 60px 1fr;
+      gap: 6px 20px;
+      font-family: "DM Mono", monospace;
+      font-size: 13px;
+      color: var(--ink-dim);
+      margin-top: 8px;
+    }
+    .grid-row .label { color: var(--ink); }
+    .grid-row .val { text-align: right; font-variant-numeric: tabular-nums; }
+    .grid-row .breach { color: var(--coral); font-weight: 500; }
+
+    .reasoning-block {
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 19px;
+      line-height: 1.55;
+      max-width: 680px;
+      color: var(--ink);
+      padding: 14px 0 8px 110px;
+      white-space: pre-wrap;
+      font-weight: 400;
+      letter-spacing: -0.005em;
+    }
+    .reasoning-block .cursor {
+      display: inline-block;
+      width: 3px;
+      height: 22px;
+      background: var(--forest);
+      vertical-align: text-bottom;
+      margin-left: 3px;
+      animation: blink 1s steps(1) infinite;
+      transform: translateY(-2px);
+    }
+    .reasoning-block.done .cursor { display: none; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .hashscan-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border: 1px solid var(--forest);
+      border-radius: 4px;
+      text-decoration: none;
+      color: var(--forest);
+      font-family: "DM Mono", monospace;
+      font-size: 11px;
+      background: var(--paper-2);
+      transition: background 0.15s ease, transform 0.1s ease;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    .hashscan-badge:hover { background: var(--lime); transform: translateY(-1px); }
+    .hashscan-badge .arrow { font-size: 13px; }
+
+    .tool-args {
+      font-family: "DM Mono", monospace;
+      font-size: 12px;
+      color: var(--ink-dim);
+      background: var(--paper-2);
+      padding: 10px 14px;
+      border-radius: 4px;
+      margin-top: 6px;
+      border-left: 2px solid var(--lime);
+      max-width: 640px;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Peel</h1>
+    <div class="kitchen-label">H3 · Kitchen A — Shoreditch</div>
+    <button id="run-tick">Run one tick</button>
+  </header>
+  <main id="transcript"></main>
+
+  <script>
+    const transcript = document.getElementById("transcript");
+    const button = document.getElementById("run-tick");
+    let currentReasoning = null;
+
+    const es = new EventSource("/events");
+    es.onmessage = (m) => {
+      try { render(JSON.parse(m.data)); }
+      catch (err) { console.error("bad event", m.data, err); }
+    };
+    es.onerror = (err) => console.error("SSE error", err);
+
+    button.onclick = async () => {
+      button.disabled = true;
+      try {
+        const res = await fetch("/tick", { method: "POST" });
+        if (!res.ok) {
+          const body = await res.text();
+          alert(`tick failed: ${res.status} ${body}`);
+          button.disabled = false;
+        }
+      } catch (err) {
+        alert(`tick failed: ${err}`);
+        button.disabled = false;
+      }
+    };
+
+    function ts() {
+      const d = new Date();
+      return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+    }
+
+    function esc(s) {
+      return String(s)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    function row(icon, body, opts) {
+      opts = opts || {};
+      const el = document.createElement("div");
+      el.className = "event-row" + (opts.error ? " error" : "");
+      el.innerHTML = `
+        <div class="ts mono">${ts()}</div>
+        <div class="icon">${icon}</div>
+        <div class="body">${body}</div>
+      `;
+      transcript.appendChild(el);
+      scrollBottom();
+      return el;
+    }
+
+    function scrollBottom() {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+    }
+
+    function fmtKg(n) {
+      return (Math.round(n * 1000) / 1000).toFixed(3);
+    }
+
+    function render(event) {
+      switch (event.type) {
+        case "tick.start":
+          row("●", `<span class="strong">waking up</span>`);
+          break;
+
+        case "inventory.read": {
+          const entries = Object.entries(event.balances);
+          const cells = entries
+            .map(([k, v]) => `<span class="label">${esc(k)}</span><span class="val">${fmtKg(v)} kg</span>`)
+            .join("");
+          row("·", `
+            <span class="strong">pantry</span> <span class="muted">${esc(event.accountId)}</span>
+            <div class="grid-row">${cells}</div>
+          `);
+          break;
+        }
+
+        case "forecast.read": {
+          const entries = Object.entries(event.forecast);
+          const cells = entries
+            .map(([k, v]) => `<span class="label">${esc(k)}</span><span class="val">${v.dailyKg.toFixed(1)} × ${event.daysLeft}d = ${v.projectedUseKg.toFixed(1)} kg</span>`)
+            .join("");
+          row("·", `
+            <span class="strong">forecast</span> <span class="muted">${event.daysLeft} days left in period</span>
+            <div class="grid-row">${cells}</div>
+          `);
+          break;
+        }
+
+        case "surplus.computed": {
+          const entries = Object.entries(event.perIngredient);
+          const cells = entries.map(([k, v]) => {
+            const cls = v.breaches ? "val breach" : "val";
+            const sign = v.surplusKg >= 0 ? "+" : "";
+            const mark = v.breaches ? " ▲" : "";
+            return `<span class="label">${esc(k)}</span><span class="${cls}">${sign}${fmtKg(v.surplusKg)} kg${mark}</span>`;
+          }).join("");
+          row("·", `
+            <span class="strong">surplus analysis</span>
+            <div class="grid-row">${cells}</div>
+          `);
+          break;
+        }
+
+        case "ingredient.selected":
+          row("→", `focusing on <span class="strong">${esc(event.ingredient)}</span> <span class="muted">(${event.surplusKg.toFixed(1)} kg surplus)</span>`);
+          break;
+
+        case "llm.invoke": {
+          row("◆", `<span class="strong">reasoning</span> <span class="muted">· ${esc(event.model)}</span>`);
+          const block = document.createElement("div");
+          block.className = "reasoning-block";
+          block.innerHTML = `<span class="text"></span><span class="cursor"></span>`;
+          transcript.appendChild(block);
+          currentReasoning = block;
+          scrollBottom();
+          break;
+        }
+
+        case "llm.token":
+          if (currentReasoning) {
+            const textSpan = currentReasoning.querySelector(".text");
+            textSpan.textContent += event.text;
+            scrollBottom();
+          }
+          break;
+
+        case "llm.done":
+          if (currentReasoning) {
+            currentReasoning.classList.add("done");
+            currentReasoning = null;
+          }
+          break;
+
+        case "llm.tool_call": {
+          const argStr = typeof event.args === "object" ? JSON.stringify(event.args) : String(event.args);
+          row("⚙", `
+            <span class="strong">tool call · ${esc(event.name)}</span>
+            <div class="tool-args">${esc(argStr || "(streaming…)")}</div>
+          `);
+          break;
+        }
+
+        case "llm.tool_result":
+          // quiet — hcs.submit.success renders the URL
+          break;
+
+        case "hcs.submit.request":
+          // quiet — success is where the action is
+          break;
+
+        case "hcs.submit.success":
+          row("↗", `
+            <span class="strong">${esc(event.topic)}</span> topic
+            <div style="margin-top: 8px;">
+              <a class="hashscan-badge" href="${esc(event.hashscanUrl)}" target="_blank" rel="noopener">
+                <span class="arrow">↗</span> HashScan
+              </a>
+            </div>
+          `);
+          break;
+
+        case "hcs.submit.failure":
+          row("✗", `<span class="strong">${esc(event.topic)} submit failed</span><div class="muted">${esc(event.error)}</div>`, { error: true });
+          break;
+
+        case "tick.idle":
+          row("·", `<span class="muted">no surplus · ${esc(event.reason)}</span>`);
+          button.disabled = false;
+          break;
+
+        case "tick.end":
+          row("✓", `<span class="strong">tick complete</span> <span class="muted">· action=${esc(event.action)}</span>`);
+          button.disabled = false;
+          break;
+
+        case "tick.error":
+          row("✗", `<span class="strong">error in ${esc(event.phase)}</span><div class="muted">${esc(event.error)}</div>`, { error: true });
+          button.disabled = false;
+          break;
+      }
+    }
+  </script>
+</body>
+</html>

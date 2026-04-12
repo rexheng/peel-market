@@ -17,14 +17,17 @@
 
 import "dotenv/config";
 import { KitchenTraderAgent } from "../agents/kitchen-trader.js";
+import { consoleSink } from "../agents/events.js";
 
 const TICK_INTERVAL_MS = Number(process.env.MARKET_TICK_MS ?? 5000);
 
 async function main() {
+  // EXTEND: H6 wires per-agent interval loops and wraps tick() in a
+  //         supervisor try/catch so one kitchen's crash doesn't kill B/C.
   const agents = [
-    new KitchenTraderAgent("A"),
-    new KitchenTraderAgent("B"),
-    new KitchenTraderAgent("C"),
+    new KitchenTraderAgent("A", consoleSink("A")),
+    new KitchenTraderAgent("B", consoleSink("B")),
+    new KitchenTraderAgent("C", consoleSink("C")),
   ];
 
   console.log(

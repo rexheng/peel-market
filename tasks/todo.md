@@ -54,9 +54,59 @@ Branch: `market` · Worktree: `peel-market` · Priority: **PRIMARY BUILD** · PR
 - Tokens: `RICE=0.0.8598881`, `PASTA=0.0.8598883`, `FLOUR=0.0.8598884`, `OIL=0.0.8598885`
 - Topics: `MARKET_TOPIC=0.0.8598886`, `TRANSCRIPT_TOPIC=0.0.8598887`, `PROGRAMME_TOPIC=0.0.8598889`
 
-### Pending (H3 and later)
+### H3 — committed
 
-- [ ] **H3** — Kitchen Trader Agent: inventory read via `getAccountTokenBalancesQueryTool`, compute surplus, `postOffer` → `MARKET_TOPIC`, `publishReasoning` → `TRANSCRIPT_TOPIC`
+- [x] **H3** — Kitchen Trader Agent skeleton (Kitchen A only) with streamed LLM reasoning and live SSE web viewer.
+
+**What shipped (2026-04-12):**
+- `market/agents/events.ts` — `TraderEvent` discriminated union (16 variants), `consoleSink`, `sseSink`, `createSseBroadcaster`. Single seam between headless and browser surfaces.
+- `market/agents/hashscan.ts` — `hashscan.{account,topic,token,tx}` URL helpers + `txIdForHashscan()`. Extracted from h1-smoke for cross-file reuse.
+- `market/agents/prompt.ts` — pure `buildSystemPrompt()` + `buildUserPrompt()`. User prompt narrowed to one ingredient's policy; includes a "think out loud first" step to force pre-tool-call reasoning text (otherwise llama-3.3-70b goes direct-to-tool with no streamable content).
+- `market/agents/tools.ts` — `ToolContext` expanded from 3 → 8 fields. Real bodies for `getInventory` (mirror-node fetch), `getUsageForecast` (static table), `postOffer` (policy-gated, direct SDK to MARKET_TOPIC), `publishReasoning` (direct SDK to TRANSCRIPT_TOPIC). Other 3 tools stay TODO H4/H5.
+- `market/agents/kitchen-trader.ts` — full rewrite. Streamed tick() using `agent.streamEvents({version: "v2"})` — per-token events via `on_chat_model_stream`, tool calls via `on_tool_start`. Binds ONLY `publishReasoning` + `postOffer` as LLM tools; inventory + forecast run in TS before the LLM.
+- `market/agents/env-bridge.ts` — H3-local shim that populates `process.env.KITCHEN_{A,B,C}_{ID,KEY}` from `generated-accounts.json` before client.ts reads them. Kitchen credentials are only in the JSON file; `.env` has empty placeholder lines. EXTEND: programme's planned client.ts native fallback supersedes this.
+- `market/scripts/run-one-kitchen.ts` — headless runner with `consoleSink`. Runs one tick, mirror-node round-trip against `OfferSchema` + `TranscriptEntrySchema`, prints `H3 CHECKPOINT PASSED`.
+- `market/viewer/server.ts` — raw Node `http.createServer`. Three routes: GET /, GET /events (SSE), POST /tick. Single `currentTick` concurrency guard (409 on double-click). Boots one shared `KitchenTraderAgent` with `sseSink` bound to a `SseBroadcaster`.
+- `market/viewer/viewer.html` — vanilla HTML, inline CSS + JS, no framework, no build step. Peel brand palette (Fraunces/DM Sans/DM Mono, OKLCH cream/lime/forest). Opens `EventSource('/events')`, renders each TraderEvent variant, types `llm.token` events into a growing reasoning block with a blinking cursor.
+- `docs/superpowers/specs/2026-04-12-h3-kitchen-trader-design.md` — design doc
+- `docs/superpowers/plans/2026-04-12-h3-kitchen-trader.md` — 14-task execution plan
+- `package.json` — 2 new scripts: `h3:one-kitchen`, `h3:viewer`. **Zero new npm deps.**
+- `market/scripts/run-three-agents.ts` — minimal signature fix to keep baseline typecheck clean (passes `consoleSink` to each agent constructor). H6 rewrites this.
+
+**Verified on testnet 2026-04-12:**
+- CHECKPOINT 1 (`npm run h3:one-kitchen`): multi-sentence reasoning streamed, two HCS commits, zod round-trip passed.
+  - TRANSCRIPT: https://hashscan.io/testnet/transaction/0.0.8598874-1775951724-607874504
+  - MARKET:     https://hashscan.io/testnet/transaction/0.0.8598874-1775951725-903014789
+- CHECKPOINT 2 (`npm run h3:viewer` + curl-driven POST /tick on port 3030): 112 `llm.token` SSE frames captured (character-by-character streaming confirmed), both tool calls emitted, both HCS commits landed, `tick.end` carries the URL summary. 409 concurrency guard verified on back-to-back POST.
+  - TRANSCRIPT: https://hashscan.io/testnet/transaction/0.0.8598874-1775951871-565636300
+  - MARKET:     https://hashscan.io/testnet/transaction/0.0.8598874-1775951870-243682435
+
+**Architectural decisions locked:**
+- Option (C) "narrow custom tools, one bounded LLM invocation per tick". TS does inventory + forecast + surplus math; LLM reasons about one ingredient's policy and calls exactly two tools. Keeps Groq TPM budget at ~1.5K/invoke against the 12K/min ceiling.
+- Transparency-first design: every beat of the tick emits a `TraderEvent`. Same event stream drives terminal and browser. H7 swaps `consoleSink` for `sseSink` via the same `emit()` seam — zero retrofit.
+- Direct `TopicMessageSubmitTransaction` inside `postOffer`/`publishReasoning` instead of delegating to kit's `submit_topic_message_tool`. Avoids nested agent layers; kit tools were load-bearing in H1 but H3's decision happens one layer up.
+- `streamEvents({version: "v2"})` instead of `stream({streamMode: "messages"})`. Latter gave tool-call-only chunks with no content text; former reliably yields `on_chat_model_stream` per-token events.
+- Prompt includes explicit "think out loud first" instruction. Without it, llama-3.3-70b skips straight to tool calls and emits zero streamable content — defeating the visceral beat. With it, 2-4 sentences of reasoning paragraph stream before the first `publishReasoning` call.
+
+**EXTEND: markers planted for pass-2 extension:**
+- H4 re-binds `getInventory` as an LLM tool for mid-tick re-reads
+- H4 fills `scanMarket` to read MARKET_TOPIC history + dedupe open offers
+- H4 fills `proposeTrade` to publish PROPOSAL envelopes
+- H5 fills `acceptTrade` with atomic HTS + HBAR `TransferTransaction`
+- H6 wraps `tick()` in supervisor try/catch for cross-kitchen crash isolation
+- H6 runs three kitchens simultaneously on per-kitchen intervals
+- H7 adds trade feed + inventory grid panels, 3-kitchen color coding, historical mirror-node replay
+- full version retries Groq 429s with `@langchain/openai` gpt-4o-mini fallback
+- full version polls mirror node with exponential backoff (fixed 4s wait is fragile)
+- full version reads POS-ingested rolling daily usage instead of static table
+- demo uses uuid for offerId; full version uses HCS sequence number
+- demo serves Google Fonts from CDN; production self-hosts
+- programme's native generated-accounts.json fallback in `shared/hedera/client.ts` supersedes `env-bridge.ts` — delete this shim when that lands
+
+**Shared-layer: zero edits in H3.** H3 is fully market-local. No `shared/` changes, no programme rebase needed.
+
+### Pending (H4 and later)
+
 - [ ] **H4** — `scanMarket` + proposal flow
 - [ ] **H5** — `acceptTrade` — HTS transfer + HBAR settlement
 - [ ] **H6** — Run three agents simultaneously, guarantee ≥1 end-to-end trade
