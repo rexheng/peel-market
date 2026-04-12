@@ -1,72 +1,93 @@
 /**
  * One-shot period-close runner for the Programme stub.
  *
- * Populates three Kitchen Agents with static invoice + POS data, asks each
- * to compute and publish its PERIOD_CLOSE, then runs the Regulator Agent
- * to fetch, rank, mint REDUCTION_CREDIT to the top quartile, and publish
- * RANKING_RESULT.
+ * Populates three Kitchen Agents with static invoice data and POS data
+ * loaded from committed Square-shaped CSV exports, asks each to compute and
+ * publish its PERIOD_CLOSE, then runs the Regulator Agent to fetch, rank,
+ * mint REDUCTION_CREDIT to the top quartile, and publish RANKING_RESULT.
  *
  * Output: HashScan links for every HCS message and HTS mint.
  *
- * STATUS: pure-math path wired end-to-end. On-chain side effects (HTS mint,
- * HCS publish, mirror-node read) land in later commits.
+ * POS ingest: the three `programme/examples/pos-export-*.csv` files mirror
+ * Square's Orders API `OrderLineItem` field layout, so swapping them for a
+ * live Square API client in a pass-2 integration is a drop-in replacement
+ * through `programme/pos/square-csv-ingest.ts` — `POS_DISH_MAP` stays
+ * unchanged on either side of that swap.
+ *
+ * Invoices: still hardcoded below. In a real deployment, supplier invoices
+ * flow in through a separate channel (supplier PDFs via OCR, EDI feeds,
+ * wholesaler portal APIs) — they don't come from the POS system. Keeping
+ * invoices hardcoded while POS is externalized is deliberate: it reflects
+ * how the two data streams actually diverge in production.
  */
 
 import "dotenv/config";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
 import { KitchenAgent } from "../agents/kitchen.js";
 import { RegulatorAgent } from "../agents/regulator.js";
 import { operatorClient } from "@shared/hedera/client.js";
 import { kitchenClientFromFile } from "@shared/hedera/kitchens.js";
+import { loadPosFromSquareCsv } from "../pos/square-csv-ingest.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
- * Hardcoded demo seed. Numbers chosen so Kitchen A wins decisively, B falls
+ * Hardcoded invoice seed. Numbers chosen so Kitchen A wins decisively, B falls
  * on the cutoff, and C is clearly out — see PRD-1 §Demo flow.
  *
  *   A: purchased 25 kg → theoretical 22.7 kg → waste 2.3 kg  → rate 0.092  (WINS)
  *   B: purchased 31 kg → theoretical 27.0 kg → waste 4.0 kg  → rate 0.129  (cutoff)
  *   C: purchased 35 kg → theoretical 22.6 kg → waste 12.4 kg → rate 0.354
  *
- * EXTEND: real invoices via OCR/POS webhooks, per-ingredient mass balance,
- * anti-gaming checks on POS spikes.
+ * EXTEND: real invoices via supplier PDF OCR, wholesaler EDI feeds, or
+ * individual wholesaler portal APIs. The invoice side of the data pipeline
+ * is a separate integration from the POS side (now externalized to
+ * `programme/examples/pos-export-*.csv`) because suppliers and POS vendors
+ * are different systems in every real deployment. Per-ingredient mass
+ * balance and anti-gaming checks on POS spikes also belong in this pass.
  */
-interface KitchenSeed {
-  invoices: Array<{ ingredient: "RICE" | "PASTA" | "FLOUR" | "OIL"; kg: number }>;
-  pos: Array<{ dish: string; units: number }>;
-}
+const INVOICES: Record<
+  "A" | "B" | "C",
+  Array<{ ingredient: "RICE" | "PASTA" | "FLOUR" | "OIL"; kg: number }>
+> = {
+  A: [
+    { ingredient: "RICE", kg: 22 },
+    { ingredient: "OIL", kg: 3 },
+  ],
+  B: [
+    { ingredient: "PASTA", kg: 25 },
+    { ingredient: "FLOUR", kg: 3 },
+    { ingredient: "OIL", kg: 3 },
+  ],
+  C: [
+    { ingredient: "FLOUR", kg: 30 },
+    { ingredient: "OIL", kg: 5 },
+  ],
+};
 
-const SEED: Record<"A" | "B" | "C", KitchenSeed> = {
-  A: {
-    invoices: [
-      { ingredient: "RICE", kg: 22 },
-      { ingredient: "OIL", kg: 3 },
-    ],
-    pos: [
-      { dish: "risotto", units: 150 },
-      { dish: "paella", units: 20 },
-    ],
-  },
-  B: {
-    invoices: [
-      { ingredient: "PASTA", kg: 25 },
-      { ingredient: "FLOUR", kg: 3 },
-      { ingredient: "OIL", kg: 3 },
-    ],
-    pos: [
-      { dish: "spaghetti_bol", units: 150 },
-      { dish: "lasagna", units: 40 },
-      { dish: "penne_arrabb", units: 30 },
-    ],
-  },
-  C: {
-    invoices: [
-      { ingredient: "FLOUR", kg: 30 },
-      { ingredient: "OIL", kg: 5 },
-    ],
-    pos: [
-      { dish: "pizza_margh", units: 80 },
-      { dish: "focaccia", units: 20 },
-    ],
-  },
+// Load each kitchen's POS sales from its Square-shaped CSV export. Resolved
+// at script startup (not lazily per-iteration) so an unreadable CSV fails
+// loud before any on-chain work begins — we'd rather crash before burning
+// hbar than halfway through the cycle.
+const EXAMPLES_DIR = resolve(__dirname, "../examples");
+const POS_FROM_CSV: Record<
+  "A" | "B" | "C",
+  Array<{ dish: string; units: number }>
+> = {
+  A: loadPosFromSquareCsv(
+    resolve(EXAMPLES_DIR, "pos-export-dishoom.csv"),
+    "dishoom"
+  ),
+  B: loadPosFromSquareCsv(
+    resolve(EXAMPLES_DIR, "pos-export-pret.csv"),
+    "pret"
+  ),
+  C: loadPosFromSquareCsv(
+    resolve(EXAMPLES_DIR, "pos-export-nandos.csv"),
+    "nandos"
+  ),
 };
 
 async function main() {
@@ -83,15 +104,12 @@ async function main() {
 
   // 1. Seed each kitchen with its invoices + POS events.
   console.log(`\n=== INVOICE INGEST  ${periodEnd} ===`);
-  for (const [id, seed] of Object.entries(SEED) as [
-    "A" | "B" | "C",
-    KitchenSeed,
-  ][]) {
-    for (const { ingredient, kg } of seed.invoices) {
+  for (const id of ["A", "B", "C"] as const) {
+    for (const { ingredient, kg } of INVOICES[id]) {
       const url = await kitchens[id].ingestInvoice(ingredient, kg);
       console.log(`  KITCHEN_${id}  ${ingredient} ${kg}kg  ${url}`);
     }
-    for (const { dish, units } of seed.pos) {
+    for (const { dish, units } of POS_FROM_CSV[id]) {
       kitchens[id].ingestPOSEvent(dish, units);
     }
   }

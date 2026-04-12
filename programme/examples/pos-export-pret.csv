@@ -1,0 +1,9 @@
+order_id,created_at,line_item_uid,name,quantity,base_price_money_amount,base_price_money_currency,catalog_object_id
+PRT-2026-04-11-0001,2026-04-11T07:41:12.554Z,li_prt_001,Italian Meatballs Pasta Pot,60,495,GBP,PRT_PASTA_POMODORO
+PRT-2026-04-11-0002,2026-04-11T09:15:03.788Z,li_prt_002,Italian Meatballs Pasta Pot,45,495,GBP,PRT_PASTA_POMODORO
+PRT-2026-04-11-0003,2026-04-11T11:28:47.126Z,li_prt_003,Italian Meatballs Pasta Pot,30,495,GBP,PRT_PASTA_POMODORO
+PRT-2026-04-11-0004,2026-04-11T13:55:09.441Z,li_prt_004,Italian Meatballs Pasta Pot,15,495,GBP,PRT_PASTA_POMODORO
+PRT-2026-04-11-0005,2026-04-11T12:03:21.877Z,li_prt_005,Vegetable Lasagne,25,595,GBP,PRT_LASAGNE_VEG
+PRT-2026-04-11-0006,2026-04-11T17:42:58.019Z,li_prt_006,Vegetable Lasagne,15,595,GBP,PRT_LASAGNE_VEG
+PRT-2026-04-11-0007,2026-04-11T11:17:44.205Z,li_prt_007,Penne Arrabbiata Pasta Pot,18,495,GBP,PRT_PASTA_ARRABB
+PRT-2026-04-11-0008,2026-04-11T15:08:36.722Z,li_prt_008,Penne Arrabbiata Pasta Pot,12,495,GBP,PRT_PASTA_ARRABB

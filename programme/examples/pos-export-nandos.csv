@@ -1,0 +1,7 @@
+order_id,created_at,line_item_uid,name,quantity,base_price_money_amount,base_price_money_currency,catalog_object_id
+NAN-2026-04-11-0001,2026-04-11T12:18:44.662Z,li_nan_001,Peri Margherita Flatbread,30,850,GBP,NAN_FLATBREAD_MARG
+NAN-2026-04-11-0002,2026-04-11T13:49:27.303Z,li_nan_002,Peri Margherita Flatbread,25,850,GBP,NAN_FLATBREAD_MARG
+NAN-2026-04-11-0003,2026-04-11T18:02:11.518Z,li_nan_003,Peri Margherita Flatbread,15,850,GBP,NAN_FLATBREAD_MARG
+NAN-2026-04-11-0004,2026-04-11T19:37:55.129Z,li_nan_004,Peri Margherita Flatbread,10,850,GBP,NAN_FLATBREAD_MARG
+NAN-2026-04-11-0005,2026-04-11T13:24:07.443Z,li_nan_005,Garlic Focaccia Side,12,395,GBP,NAN_FOCACCIA_GARLIC
+NAN-2026-04-11-0006,2026-04-11T20:11:32.861Z,li_nan_006,Garlic Focaccia Side,8,395,GBP,NAN_FOCACCIA_GARLIC
