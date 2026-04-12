@@ -953,13 +953,21 @@
     }
 
     /* ===============================================================
-       POLL LOOP — GET /state every 3s
+       POLL LOOP — polls /state (local dev) or /api/state (Vercel)
        =============================================================== */
     const POLL_INTERVAL_MS = 3000;
+    // On Vercel, the serverless function lives at /api/state.
+    // Locally (app-server.ts), it's /state. Auto-detect by trying /state
+    // first; if it 404s, switch to /api/state for the rest of the session.
+    let stateUrl = "/state";
 
     async function pollState() {
       try {
-        const resp = await fetch("/state", { cache: "no-store" });
+        let resp = await fetch(stateUrl, { cache: "no-store" });
+        if (resp.status === 404 && stateUrl === "/state") {
+          stateUrl = "/api/state";
+          resp = await fetch(stateUrl, { cache: "no-store" });
+        }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const next = await resp.json();
         STATE = Object.assign({}, STATE, next, { error: null });

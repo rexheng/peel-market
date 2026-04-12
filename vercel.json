@@ -1,12 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "node scripts/vercel-build.js",
   "trailingSlash": false,
   "rewrites": [
     { "source": "/", "destination": "/index.html" },
     { "source": "/programme", "destination": "/programme/app.html" },
     { "source": "/programme/", "destination": "/programme/app.html" },
-    { "source": "/market", "destination": "/market/app.html" },
-    { "source": "/market/", "destination": "/market/app.html" }
+    { "source": "/market", "destination": "/market/viewer/app.html" },
+    { "source": "/market/", "destination": "/market/viewer/app.html" }
   ],
   "headers": [
     {
