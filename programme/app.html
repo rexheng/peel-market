@@ -219,6 +219,158 @@ a { color: inherit; text-decoration: none; }
   padding: 2rem;
 }
 
+/* ------- disclaimer banner ------- */
+.disclaim {
+  padding: 0.48rem 1.5rem;
+  background: color-mix(in oklch, var(--lime) 22%, var(--paper));
+  border-bottom: 1px solid var(--line);
+  font-size: 0.72rem;
+  color: var(--forest-2);
+  text-align: center;
+  letter-spacing: 0.015em;
+  line-height: 1.4;
+}
+.disclaim b { color: var(--forest); font-weight: 600; }
+.disclaim__sep { opacity: 0.4; margin: 0 0.55rem; }
+
+/* ------- mass-balance bar inside kitchen cards ------- */
+.k__mass { margin-bottom: 0.75rem; }
+.k__mass__bar {
+  display: flex;
+  height: 9px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--paper-3);
+  margin-bottom: 0.4rem;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.k__mass__bar__plate {
+  background: var(--lime-deep);
+  height: 100%;
+  transition: width 600ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.k__mass__bar__bin {
+  background: var(--coral);
+  height: 100%;
+  transition: width 600ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.k__mass__legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.6rem;
+  color: var(--forest-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.k__mass__legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.k__mass__dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.k__mass__dot.plate { background: var(--lime-deep); }
+.k__mass__dot.bin { background: var(--coral); }
+
+/* ------- waste-rate bar chart (regulator panel) ------- */
+.rank {
+  margin-bottom: 1.1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px dashed var(--line);
+}
+.rank__hdr {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--forest-3);
+  margin-bottom: 0.85rem;
+}
+.rank__chart {
+  position: relative;
+  padding-top: 0.75rem;
+}
+.rank__row {
+  display: grid;
+  grid-template-columns: 4.8rem 1fr 3rem;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.32rem 0;
+}
+.rank__name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--forest);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rank__track {
+  position: relative;
+  height: 10px;
+  background: var(--paper-2);
+  border-radius: 999px;
+  overflow: visible;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.rank__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--coral);
+  transition: width 680ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rank__row.winner .rank__fill {
+  background: linear-gradient(90deg, var(--lime-deep), var(--lime-hot));
+}
+.rank__pct {
+  font-family: "DM Mono", monospace;
+  font-size: 0.72rem;
+  text-align: right;
+  color: var(--forest-2);
+  font-variant-numeric: tabular-nums;
+}
+.rank__row.winner .rank__pct {
+  color: var(--lime-deep);
+  font-weight: 600;
+}
+.rank__cutoff-line {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--forest);
+  z-index: 2;
+  pointer-events: none;
+  transition: left 680ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rank__cutoff-line::before {
+  content: "cutoff";
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--forest);
+  background: var(--paper);
+  padding: 1px 0.35rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+/* ------- verification micro-copy ------- */
+.verify-note {
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px dashed var(--line);
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--forest-3);
+}
+.verify-note b { color: var(--forest-2); font-weight: 600; }
+
 /* ------- narrow screens ------- */
 @media (max-width: 1100px) {
   body { overflow: auto; }
@@ -241,35 +393,42 @@ a { color: inherit; text-decoration: none; }
     </div>
   </header>
 
+  <div class="disclaim">
+    <b>Demo data.</b> Brand names illustrative of kitchen archetypes.
+    <span class="disclaim__sep">·</span>
+    Math, events, and credits are live on Hedera testnet — every row is signed and anyone can re-verify.
+  </div>
+
   <main class="grid">
     <!-- ==================== KITCHENS ==================== -->
     <section class="panel">
-      <div class="panel__hdr">Kitchens · per-period state</div>
+      <div class="panel__hdr">The three kitchens · where the food went</div>
       <div class="panel__body" id="kitchens">
         <div class="empty">
-          Per-kitchen purchased / theoretical / waste, live from PROGRAMME_TOPIC.
+          Waiting for invoices and period closes to land on PROGRAMME_TOPIC.<br>
+          When they do, each kitchen's mass balance will appear here.
         </div>
       </div>
     </section>
 
     <!-- ==================== PUBLIC LEDGER ==================== -->
     <section class="panel">
-      <div class="panel__hdr">Public ledger · PROGRAMME_TOPIC</div>
+      <div class="panel__hdr">Live ledger · every event, signed on Hedera</div>
       <div class="panel__body" id="ledger">
         <div class="empty">
-          Every INVOICE_INGEST, PERIOD_CLOSE, and RANKING_RESULT envelope<br>
-          will stream here with a clickable HashScan link.
+          Every delivery, every period close, every ranking<br>
+          will stream here the moment it's signed on-chain.
         </div>
       </div>
     </section>
 
     <!-- ==================== REGULATOR ==================== -->
     <section class="panel">
-      <div class="panel__hdr">Regulator · ranking + credits</div>
+      <div class="panel__hdr">The verdict · who earned credits</div>
       <div class="panel__body" id="regulator">
         <div class="empty">
-          Cutoff, winners, and REDUCTION_CREDIT mint + transfer links<br>
-          appear here once a RANKING_RESULT lands on-topic.
+          The regulator ranks every kitchen on public ledger data once<br>
+          all three have closed the period. Winners earn credits automatically.
         </div>
       </div>
     </section>
@@ -308,6 +467,21 @@ const KITCHENS = {
 const KITCHEN_BY_ACCOUNT = Object.fromEntries(
   Object.entries(KITCHENS).map(([id, acct]) => [acct, id])
 );
+
+// Demo kitchen archetypes. Real UK restaurant chains picked for
+// recognisability — each maps to one of the demo's Hedera account
+// ids. The disclaimer banner in the DOM tells viewers these are
+// illustrative (the underlying math is live on testnet, but the
+// brand assignment is arbitrary).
+const KITCHEN_BRANDS = {
+  A: "Dishoom",
+  B: "Pret A Manger",
+  C: "Nando's",
+};
+function brandName(letter) {
+  if (!letter) return "unknown kitchen";
+  return KITCHEN_BRANDS[letter] ?? `Kitchen ${letter}`;
+}
 
 /* ---------- state ---------- */
 
@@ -435,7 +609,7 @@ async function poll() {
     state.lastError = null;
 
     if (newCount > 0 || state.ordered.length > 0) render();
-    tick.textContent = `${state.ordered.length} envelopes · updated ${formatClock(state.lastUpdateAt)}`;
+    tick.textContent = `${state.ordered.length} events verified · ${formatClock(state.lastUpdateAt)}`;
   } catch (err) {
     state.lastError = String(err);
     tick.textContent = `error · ${state.lastError}`;
@@ -477,7 +651,7 @@ function renderKitchens() {
   for (const id of ["A", "B", "C"]) {
     const card = el("div", `k__card ${id.toLowerCase()}`);
     const name = el("div", "k__name");
-    name.appendChild(el("span", null, `Kitchen ${id}`));
+    name.appendChild(el("span", null, brandName(id)));
     const acct = el("a", "k__acct");
     acct.href = hashscanAccount(KITCHENS[id]);
     acct.target = "_blank";
@@ -488,11 +662,42 @@ function renderKitchens() {
 
     const close = period?.closes.get(`KITCHEN_${id}`)?.payload;
     if (close) {
+      // Mass-balance bar: how much of what came in ended up on the plate
+      // vs in the bin. Width proportional to each slice of the purchased total.
+      const plateShare = close.purchasedKg > 0
+        ? (close.theoreticalConsumedKg / close.purchasedKg) * 100
+        : 0;
+      const binShare = close.purchasedKg > 0
+        ? (close.residualWasteKg / close.purchasedKg) * 100
+        : 0;
+
+      const mass = el("div", "k__mass");
+      const bar = el("div", "k__mass__bar");
+      const plate = el("div", "k__mass__bar__plate");
+      plate.style.width = `${plateShare}%`;
+      const bin = el("div", "k__mass__bar__bin");
+      bin.style.width = `${binShare}%`;
+      bar.appendChild(plate);
+      bar.appendChild(bin);
+      mass.appendChild(bar);
+
+      const legend = el("div", "k__mass__legend");
+      const plateLbl = el("span");
+      plateLbl.appendChild(el("span", "k__mass__dot plate"));
+      plateLbl.appendChild(document.createTextNode(" on the plate"));
+      const binLbl = el("span");
+      binLbl.appendChild(el("span", "k__mass__dot bin"));
+      binLbl.appendChild(document.createTextNode(" in the bin"));
+      legend.appendChild(plateLbl);
+      legend.appendChild(binLbl);
+      mass.appendChild(legend);
+      card.appendChild(mass);
+
       const rows = [
-        ["purchased", `${close.purchasedKg.toFixed(1)} kg`],
-        ["theoretical", `${close.theoreticalConsumedKg.toFixed(1)} kg`],
-        ["waste", `${close.residualWasteKg.toFixed(1)} kg`],
-        ["rate", `${(close.wasteRate * 100).toFixed(1)}%`, "k__rate"],
+        ["in the door", `${close.purchasedKg.toFixed(1)} kg`],
+        ["on the plate", `${close.theoreticalConsumedKg.toFixed(1)} kg`],
+        ["in the bin", `${close.residualWasteKg.toFixed(1)} kg`],
+        ["waste rate", `${(close.wasteRate * 100).toFixed(1)}%`, "k__rate"],
       ];
       for (const [lbl, val, extraCls] of rows) {
         const row = el("div", "k__row");
@@ -506,13 +711,13 @@ function renderKitchens() {
       ) ?? [];
       const totalKg = invoices.reduce((s, e) => s + e.payload.kg, 0);
       const row = el("div", "k__row");
-      row.appendChild(el("span", "lbl", "purchased"));
+      row.appendChild(el("span", "lbl", "in the door"));
       row.appendChild(el("span", "val", `${totalKg.toFixed(1)} kg`));
       card.appendChild(row);
       const note = el("div", "k__row");
       note.appendChild(el("span", "lbl", "status"));
       note.appendChild(
-        el("span", "val", invoices.length ? "awaiting close" : "idle")
+        el("span", "val", invoices.length ? "awaiting period close" : "idle")
       );
       card.appendChild(note);
     }
@@ -541,52 +746,107 @@ function renderLedger() {
 
     const body = el("div", "l__body");
     if (payload.kind === "INVOICE_INGEST") {
-      const kind = el("span", "kind invoice", "INVOICE ");
-      body.appendChild(kind);
       const letter = kitchenLetter(payload.kitchen) ?? "";
-      const k = el("span", `kitchen ${letter.toLowerCase()}`, `KITCHEN_${letter}`);
+      const k = el("span", `kitchen ${letter.toLowerCase()}`, brandName(letter));
       body.appendChild(k);
       body.appendChild(document.createTextNode(" · "));
-      body.appendChild(el("span", "num", `${payload.ingredient} ${payload.kg}kg`));
+      body.appendChild(el("span", "kind invoice", "delivery in "));
+      body.appendChild(
+        el("span", "num", `${payload.kg} kg ${payload.ingredient.toLowerCase()}`)
+      );
     } else if (payload.kind === "PERIOD_CLOSE") {
-      const kind = el("span", "kind close", "PERIOD CLOSE ");
-      body.appendChild(kind);
       const letter = kitchenLetter(payload.kitchen) ?? "";
       body.appendChild(
-        el("span", `kitchen ${letter.toLowerCase()}`, `KITCHEN_${letter}`)
+        el("span", `kitchen ${letter.toLowerCase()}`, brandName(letter))
       );
       body.appendChild(document.createTextNode(" · "));
+      body.appendChild(el("span", "kind close", "closed the period "));
       body.appendChild(
         el(
           "span",
           "num",
-          `${payload.purchasedKg.toFixed(1)}kg → ${payload.residualWasteKg.toFixed(1)}kg waste (${(payload.wasteRate * 100).toFixed(1)}%)`
+          `${payload.residualWasteKg.toFixed(1)} kg unaccounted (${(payload.wasteRate * 100).toFixed(1)}% waste)`
         )
       );
     } else if (payload.kind === "RANKING_RESULT") {
-      const kind = el("span", "kind ranking", "RANKING RESULT ");
-      body.appendChild(kind);
       const winnerLetters = payload.winners
         .map((w) => kitchenLetter(w.kitchen))
         .filter(Boolean);
-      body.appendChild(
-        el(
-          "span",
-          "num",
-          `cutoff ${(payload.cutoffWasteRate * 100).toFixed(1)}% · winners ${winnerLetters.join(", ") || "none"}`
-        )
-      );
+      const winnerBrands = winnerLetters.map(brandName).join(", ");
+      body.appendChild(el("span", "kind ranking", "verdict in "));
+      body.appendChild(document.createTextNode(" · "));
+      if (winnerBrands) {
+        body.appendChild(el("span", "num", `${winnerBrands} earned credits`));
+        body.appendChild(document.createTextNode(` (cutoff ${(payload.cutoffWasteRate * 100).toFixed(1)}%)`));
+      } else {
+        body.appendChild(el("span", "num", "no winners this period"));
+      }
     }
     row.appendChild(body);
 
-    const link = el("a", "l__link", "hashscan");
+    const link = el("a", "l__link", "verify");
     link.href = hashscanTx(entry.submitter, entry.validStart);
     link.target = "_blank";
     link.rel = "noopener";
+    link.title = "Open this event on HashScan";
     row.appendChild(link);
 
     root.appendChild(row);
   }
+}
+
+function renderRankBars(period, ranking, parent) {
+  // Build a horizontal bar chart of every kitchen's waste rate with the
+  // cutoff drawn as a vertical line. Reads from the period's closes, not
+  // just the ranking envelope (so we see losers as well as winners).
+  const rows = [];
+  for (const [kitchenLabel, entry] of period.closes.entries()) {
+    const letter = kitchenLetter(kitchenLabel) ?? "?";
+    rows.push({
+      letter,
+      brand: brandName(letter),
+      rate: entry.payload.wasteRate,
+      isWinner: entry.payload.wasteRate < ranking.cutoffWasteRate,
+    });
+  }
+  if (rows.length === 0) return;
+  rows.sort((a, b) => a.rate - b.rate);
+
+  // Dynamic scale: max of 40% or the actual worst rate + 10% headroom,
+  // whichever is bigger. Prevents outliers from blowing out the layout.
+  const actualMax = Math.max(...rows.map((r) => r.rate), ranking.cutoffWasteRate);
+  const chartMaxRate = Math.max(0.4, actualMax * 1.1);
+
+  const section = el("div", "rank");
+  section.appendChild(el("div", "rank__hdr", "cutoff ranking · lowest waste wins"));
+
+  const chart = el("div", "rank__chart");
+  // Cutoff line (drawn once, positioned absolutely relative to the track row)
+  // We draw it inside each track so the scale is consistent row-to-row.
+  const cutoffPct = (ranking.cutoffWasteRate / chartMaxRate) * 100;
+
+  for (const r of rows) {
+    const row = el("div", `rank__row${r.isWinner ? " winner" : ""}`);
+    row.appendChild(el("div", "rank__name", r.brand));
+
+    const track = el("div", "rank__track");
+    const fill = el("div", "rank__fill");
+    fill.style.width = `${(r.rate / chartMaxRate) * 100}%`;
+    track.appendChild(fill);
+
+    // Per-row cutoff line so it aligns with each bar's scale
+    const cut = el("div", "rank__cutoff-line");
+    cut.style.left = `${cutoffPct}%`;
+    track.appendChild(cut);
+
+    row.appendChild(track);
+    row.appendChild(
+      el("div", "rank__pct", `${(r.rate * 100).toFixed(1)}%`)
+    );
+    chart.appendChild(row);
+  }
+  section.appendChild(chart);
+  parent.appendChild(section);
 }
 
 function renderRegulator() {
@@ -600,19 +860,26 @@ function renderRegulator() {
 
   const ranking = period?.ranking?.payload;
   if (!ranking) {
-    const emp = el("div", "empty", "awaiting RANKING_RESULT…");
+    const emp = el(
+      "div",
+      "empty",
+      "Waiting for all three kitchens to close the period before the regulator can rank."
+    );
     root.appendChild(emp);
     return;
   }
 
+  // Bar chart of all kitchens with cutoff line (shows losers as well as winners)
+  renderRankBars(period, ranking, root);
+
   const cutoff = el("div", "r__cutoff");
-  cutoff.appendChild(el("div", "lbl", "cutoff waste rate"));
+  cutoff.appendChild(el("div", "lbl", "cutoff waste rate · top quartile"));
   cutoff.appendChild(
     el("div", "val", `${(ranking.cutoffWasteRate * 100).toFixed(1)}%`)
   );
   root.appendChild(cutoff);
 
-  root.appendChild(el("div", "r__winners__hdr", "top quartile"));
+  root.appendChild(el("div", "r__winners__hdr", "who earned credits"));
 
   if (ranking.winners.length === 0) {
     root.appendChild(el("div", "empty", "no winners this period"));
@@ -620,13 +887,13 @@ function renderRegulator() {
     for (const w of ranking.winners) {
       const letter = kitchenLetter(w.kitchen) ?? "?";
       const card = el("div", "r__winner top");
-      card.appendChild(el("div", `name ${letter.toLowerCase()}`, `Kitchen ${letter}`));
+      card.appendChild(el("div", `name ${letter.toLowerCase()}`, brandName(letter)));
       const rateRow = el("div", "row");
       rateRow.appendChild(el("span", "lbl", "waste rate"));
       rateRow.appendChild(el("span", null, `${(w.wasteRate * 100).toFixed(1)}%`));
       card.appendChild(rateRow);
       const credRow = el("div", "row");
-      credRow.appendChild(el("span", "lbl", "credits"));
+      credRow.appendChild(el("span", "lbl", "credits earned"));
       credRow.appendChild(
         el("span", null, `${w.creditsMinted.toFixed(2)} REDUCTION_CREDIT`)
       );
@@ -646,17 +913,24 @@ function renderRegulator() {
   rankLink.target = "_blank";
   rankLink.rel = "noopener";
   links.appendChild(rankLink);
-  const tokenLink = el("a", "l__link", "token");
+  const tokenLink = el("a", "l__link", "credit token");
   tokenLink.href = hashscanToken(REDUCTION_CREDIT);
   tokenLink.target = "_blank";
   tokenLink.rel = "noopener";
   links.appendChild(tokenLink);
-  const topicLink = el("a", "l__link", "topic");
+  const topicLink = el("a", "l__link", "full topic");
   topicLink.href = hashscanTopic(PROGRAMME_TOPIC);
   topicLink.target = "_blank";
   topicLink.rel = "noopener";
   links.appendChild(topicLink);
   root.appendChild(links);
+
+  // Verification micro-copy — the whole point of running this on public
+  // infrastructure is that anyone can re-check the math. Say so.
+  const note = el("div", "verify-note");
+  note.innerHTML =
+    "<b>Derived, not reported.</b> Every number above — the waste rates, the cutoff, the credits minted — was computed from events signed on public Hedera testnet. Click any verify button to see the raw envelope on HashScan, then re-run the math yourself.";
+  root.appendChild(note);
 }
 
 /* ---------- bootstrap ---------- */
