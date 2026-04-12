@@ -95,7 +95,24 @@ export type TraderEvent =
       error: string;
     }
   // Errors
-  | { type: "tick.error"; kitchen: KitchenId; phase: string; error: string };
+  | { type: "tick.error"; kitchen: KitchenId; phase: string; error: string }
+  // Added in H6:
+  | {
+      type: "supervisor.kitchen_started";
+      kitchen: KitchenId;
+      staggerOffsetMs: number;
+    }
+  | {
+      type: "supervisor.tick_skipped";
+      kitchen: KitchenId;
+      reason: "previous tick still running" | string;
+    }
+  | {
+      type: "supervisor.kitchen_crashed";
+      kitchen: KitchenId;
+      error: string;
+    }
+  | { type: "supervisor.cycle_complete"; cyclesPerKitchen: number };
 
 export type EmitFn = (event: TraderEvent) => void;
 
@@ -328,6 +345,37 @@ export function consoleSink(kitchenId: KitchenId): EmitFn {
           `${prefix()}${ANSI.red}✗ tick.error · phase=${event.phase} · ${
             event.error
           }${ANSI.reset}`
+        );
+        break;
+      }
+      // Added in H6:
+      case "supervisor.kitchen_started": {
+        lineBreakIfStreaming();
+        console.log(
+          `${prefix()}${ANSI.dim}◎ supervisor started (stagger +${
+            event.staggerOffsetMs
+          }ms)${ANSI.reset}`
+        );
+        break;
+      }
+      case "supervisor.tick_skipped": {
+        lineBreakIfStreaming();
+        console.log(
+          `${prefix()}${ANSI.dim}⊘ tick skipped · ${event.reason}${ANSI.reset}`
+        );
+        break;
+      }
+      case "supervisor.kitchen_crashed": {
+        lineBreakIfStreaming();
+        console.log(
+          `${prefix()}${ANSI.red}✗ kitchen crashed · ${event.error}${ANSI.reset}`
+        );
+        break;
+      }
+      case "supervisor.cycle_complete": {
+        lineBreakIfStreaming();
+        console.log(
+          `${prefix()}${ANSI.bold}◉ cycle complete · ${event.cyclesPerKitchen} tick(s)/kitchen${ANSI.reset}`
         );
         break;
       }
