@@ -1,151 +1,306 @@
-# Peel Programme — Session Task Log
+# Peel Market — Session Task Log
 
-Branch: `main` (programme merged 2026-04-12) · Worktree: `aaFood Waste Solver` · Status: demo complete
+Branch: `market` · Worktree: `peel-market` · Priority: **PRIMARY BUILD** · PRD: `../PRD-2-Market.md`
 
 ## Decisions
 
-- **REDUCTION_CREDIT ownership:** Programme-owned. Dedicated `programme/scripts/bootstrap-programme.ts` creates it; new `shared/hedera/programme-tokens.ts` exposes the loader. Market's `bootstrap-tokens.ts` stays untouched — avoids rebase conflicts with the market worktree.
-- **n<4 cutoff fix:** `regulator.computeRanking` has a degenerate case — `Math.floor(rates.length * 0.25)` with strict `<` filter yields zero winners for n<4. Demo runs with n=3, so this is load-bearing. Surgical fix: floor lower-bounded at 1, i.e. `Math.max(1, Math.floor(n * 0.25))`. Preserves intent for n≥4.
-- **Hedera Docs MCP:** installed via `claude mcp add --transport http hedera-docs https://docs.hedera.com/mcp`. Replaces Context7 for `@hashgraph/sdk` reference.
-- **Hgraph MCP:** not installed. Requires a `pk_prod_` key from the Hgraph dashboard. Mirror node access happens via plain HTTP from regulator code instead.
+- **Langchain 1.x upgrade forced.** `hedera-agent-kit@3.8.2` (the version hitting the H1 gate) bundles `langchain@1.2.24` + `@langchain/core@1.1.24` as its own runtime. Staying on the scaffold's 0.3 line creates a dual-install where tools built against core@1.1.24 fail `instanceof` checks in our agent code. Bumped `package.json` to: `@langchain/core ^1.1.24`, `@langchain/groq ^1.2.0`, `@langchain/langgraph ^1.2.0`, `@langchain/openai ^1.4.0`, `langchain ^1.3.0`, `@hashgraph/sdk ^2.80.0` (matching hedera-agent-kit's internal), `zod ^3.25.0`. Programme doesn't use langchain, but the `@hashgraph/sdk` bump from 2.54 → 2.80 is a shared surface — worth a sanity check when programme rebases.
+- **LLM is Groq, not OpenAI.** Rex provided Groq credentials 2026-04-11. Primary model: `llama-3.3-70b-versatile`. Kept `@langchain/openai` as a dep for fallback if Groq rate-limits mid-demo.
+- **ECDSA raw-hex key support.** Rex's operator key is raw 32-byte hex (portal-issued ECDSA), not DER. `PrivateKey.fromString()` silently fails on this format. Added a `parsePrivateKey()` helper in `shared/hedera/client.ts` that tries DER → ECDSA → Ed25519 in order. See "Shared-layer edits" below — programme must rebase.
+- **hedera-agent-kit v3 tool surface confirmed** (via Hedera docs on context7): `hedera-account-create`, `hedera-hcs-create-topic`, `hedera-hcs-submit-message`, `hedera-hts-create-fungible-token`, `hedera-hts-transfer-tokens`. This means H1 can be 100% toolkit-driven with zero custom tool wrappers — the LLM orchestrates all five calls. Custom wrappers matching `market/agents/tools.ts` shape are an H3 concern, not H1.
+- **H1 scope interpretation — OPEN.** Three viable paths pending Rex's choice in brainstorming: (a) minimal toolkit-only smoke, (b) structured custom wrappers, (c) hybrid. Brainstorming paused awaiting decision.
 
-## Status — DEMO COMPLETE (2026-04-12)
+## Current
 
-The Programme demo is finished and merged to `main`. The `programme` branch and its `peel-programme` worktree are gone. Fresh sessions should work from `main` in this worktree (`aaFood Waste Solver`). Full cycle runs end-to-end on testnet via `npm run programme:run`.
+### Completed (mechanical setup, no design choices)
 
-**What shipped (11 commits total, sessions 1 + 2):**
+- [x] Create `peel-market` git worktree
+- [x] Write `.env` with Rex's operator creds + Groq keys
+- [x] Fix ECDSA raw-hex parsing in `shared/hedera/client.ts`
+- [x] Pin `package.json` deps to exact hedera-agent-kit internal versions to force dedup (`@hashgraph/sdk 2.80.0`, `@langchain/core 1.1.24`, `@langchain/openai 1.2.7`, `langchain 1.2.24`, `zod 3.25.76`). Without exact pins, npm installs nested duplicates that break tool `instanceof` checks.
+- [x] Add `@langchain/groq ^1.2.0` + `@langchain/langgraph ^1.2.0` (not pinned since not shared with kit)
+- [x] Add `h1:smoke` npm script
+- [x] `npm install` — 587 packages, single-instance `@langchain/core` and `@hashgraph/sdk` verified (nested `bignumber.js` and `long` remain but don't affect tool chain)
+- [x] Fix `tsconfig.json` — add `"types": ["node"]` to stop TypeScript auto-including transitive type libraries (the new `@elizaos/core` → RN Metro chain pulled by hedera-agent-kit was triggering `TS2688` on `mapbox__point-geometry`)
+- [x] `npm run typecheck` — baseline clean
+- [x] Enumerate hedera-agent-kit v3.8.2 tool surface via Hedera docs on context7
 
-Session 1 (Tasks 1–5 + rebase gate): seed data + n<4 cutoff fix, shared HashScan URL helper + kitchen account bootstrap, registry loaders, `PROGRAMME_TOPIC` + `REDUCTION_CREDIT` provisioned on testnet, publish/mirror helpers.
+### H1 — committed (a0e7cef)
 
-Session 2 (Tasks 6–9 + flowchart):
-- `4fc54e9` Task 6 — `kitchen.ingestInvoice` publishes `INVOICE_INGEST`, takes per-kitchen `Client`
-- `e5d081b` Task 7 — `kitchen.publishPeriodClose` wired to publish helper
-- `6bdf3db` Task 8 — `regulator.fetchAllPeriodCloses` wired via mirror node, constructor takes operator `Client`
-- `9b9bac3` Task 9 — `regulator.mintCreditsToTopQuartile` (mint-then-raw-transfer) + `publishRankingResult` + `run-period-close.ts` rewritten for full cycle
-- `7a910e3` docs — todo.md Review section updated with live run evidence
-- `5747b2b` docs — Food Credits flowchart (md + standalone HTML in `docs/`)
+- [x] Wrote and ran `market/scripts/h1-smoke.ts` end-to-end
+- [x] Second shared-layer edit to `shared/hedera/client.ts`: `parsePrivateKey()` now respects the `*_KEY_TYPE` env hint and detects DER by `302` prefix instead of trial-parsing. `fromStringDer` was silently parsing raw hex as Ed25519, returning a key whose pubkey didn't match the operator's ECDSA account.
+- [x] `package.json` gained npm `overrides` forcing `@langchain/core=1.1.39` everywhere (needed for `standard_schema` export `@langchain/groq@1.2.0` imports); also single-instances `@hashgraph/sdk` and `@langchain/openai`.
+- [x] Agent construction diverged from spec: TWO single-tool agents (one per gate op) instead of one two-tool agent. Forced by Groq free-tier 12K TPM limit on llama-3.3-70b-versatile (one 17-tool agent sent 21.7K tokens).
+- [x] System prompt tightened ("Call the tool EXACTLY ONCE. Never call it twice.") to fix a `GraphRecursionError` from llama-3.3-70b looping after successful tool calls.
+- [x] Verified on testnet — both HashScan URLs show `SUCCESS`, mirror-node round-trip parses the envelope as `TranscriptEntry` and asserts the 100-unit token balance landed immediately on the scratch account.
 
-**Kitchen coordination decision: Option A shipped.** Programme uses its isolated kitchens (`0.0.8598914-16`) and its own `PROGRAMME_TOPIC=0.0.8598980`. Market's kitchens remain narratively separate. Rationale: no cross-worktree file copy, `ingestInvoice` doesn't touch RAW_* so shared-kitchens was cosmetic.
+### H2 — committed
 
-**On-chain state (reusable for future runs):**
-- Operator `0.0.8583839` (~795 ℏ after session 2's first run, drops ~1 ℏ per full cycle)
-- Kitchens `A=0.0.8598914`, `B=0.0.8598915`, `C=0.0.8598916` — keys in gitignored `shared/hedera/generated-accounts.json`
-- `PROGRAMME_TOPIC=0.0.8598980` — gitignored `shared/hedera/generated-programme.json`
-- `REDUCTION_CREDIT=0.0.8598981` — decimals=2, operator is treasury + supply key
+- [x] Rewrote `market/scripts/bootstrap-tokens.ts` — no longer a stub.
+- [x] Three kitchen accounts created with ECDSA keys, 10 HBAR each, unlimited auto-association.
+- [x] Four `RAW_*` fungible tokens minted with operator as treasury: 1000 kg initial supply each, 3 decimals, infinite supply type, operator supply-key (so programme can mint more per HIP-904 invoice-driven flow).
+- [x] Three HCS topics created (`MARKET_TOPIC`, `TRANSCRIPT_TOPIC`, `PROGRAMME_TOPIC`).
+- [x] Seed balances transferred per PRD-2 §MVP scope:
+    - A: 50 kg RICE, 2 kg PASTA
+    - B: 2 kg RICE, 50 kg PASTA
+    - C: 20 kg RICE + 20 kg PASTA + 20 kg FLOUR + 50 kg OIL (the "balanced, surplus OIL" interpretation)
+- [x] Written to three gitignored files under `shared/hedera/`:
+    - `generated-accounts.json` `{A,B,C: {accountId, privateKey(DER), publicKey(DER)}}`
+    - `generated-tokens.json` `{RICE, PASTA, FLOUR, OIL}`
+    - `generated-topics.json` `{MARKET_TOPIC, TRANSCRIPT_TOPIC, PROGRAMME_TOPIC}`
 
-**First full testnet run (2026-04-11, periodEnd `2026-04-11`):** 13 HashScan URLs, 3/3 mirror hits, KITCHEN_A sole winner at 0.93 `REDUCTION_CREDIT`. All URLs are in the Review section below.
+**Resource inventory after H2 bootstrap run on 2026-04-11:**
+- Kitchens: `A=0.0.8598874`, `B=0.0.8598877`, `C=0.0.8598879`
+- Tokens: `RICE=0.0.8598881`, `PASTA=0.0.8598883`, `FLOUR=0.0.8598884`, `OIL=0.0.8598885`
+- Topics: `MARKET_TOPIC=0.0.8598886`, `TRANSCRIPT_TOPIC=0.0.8598887`, `PROGRAMME_TOPIC=0.0.8598889`
 
-**How to reproduce the demo:** `cd` into this worktree, `npm install` (first time only), `npm run programme:run`. Each run costs ~1 ℏ and mints 93 new minor units of `REDUCTION_CREDIT` to KITCHEN_A. No bootstrap needed unless operator balance drops below ~10 ℏ or the topic/token is deleted.
+### H3 — committed
 
-**Open items for future sessions:**
-- `EXTEND:` markers in the code are the concrete pass-2 backlog (grep `EXTEND:` in `programme/` and `shared/`). Most important: `kitchen.ingestInvoice` should also mint `RAW_{ingredient}` HTS tokens once market's H2 populates `generated-tokens.json`.
-- When the market session eventually merges to `main`, expect a minor conflict on `shared/hedera/client.ts` (market has a newer `parsePrivateKey` than programme pulled in `8349733`). Resolution: keep market's version, re-run `npm run typecheck` + `npm run programme:run` to confirm nothing regresses.
-- Lessons from both sessions live in `tasks/lessons.md` — read before any session that touches programme or shared/hedera/*.
+- [x] **H3** — Kitchen Trader Agent skeleton (Kitchen A only) with streamed LLM reasoning and live SSE web viewer.
+
+**What shipped (2026-04-12):**
+- `market/agents/events.ts` — `TraderEvent` discriminated union (16 variants), `consoleSink`, `sseSink`, `createSseBroadcaster`. Single seam between headless and browser surfaces.
+- `market/agents/hashscan.ts` — `hashscan.{account,topic,token,tx}` URL helpers + `txIdForHashscan()`. Extracted from h1-smoke for cross-file reuse.
+- `market/agents/prompt.ts` — pure `buildSystemPrompt()` + `buildUserPrompt()`. User prompt narrowed to one ingredient's policy; includes a "think out loud first" step to force pre-tool-call reasoning text (otherwise llama-3.3-70b goes direct-to-tool with no streamable content).
+- `market/agents/tools.ts` — `ToolContext` expanded from 3 → 8 fields. Real bodies for `getInventory` (mirror-node fetch), `getUsageForecast` (static table), `postOffer` (policy-gated, direct SDK to MARKET_TOPIC), `publishReasoning` (direct SDK to TRANSCRIPT_TOPIC). Other 3 tools stay TODO H4/H5.
+- `market/agents/kitchen-trader.ts` — full rewrite. Streamed tick() using `agent.streamEvents({version: "v2"})` — per-token events via `on_chat_model_stream`, tool calls via `on_tool_start`. Binds ONLY `publishReasoning` + `postOffer` as LLM tools; inventory + forecast run in TS before the LLM.
+- `market/agents/env-bridge.ts` — H3-local shim that populates `process.env.KITCHEN_{A,B,C}_{ID,KEY}` from `generated-accounts.json` before client.ts reads them. Kitchen credentials are only in the JSON file; `.env` has empty placeholder lines. EXTEND: programme's planned client.ts native fallback supersedes this.
+- `market/scripts/run-one-kitchen.ts` — headless runner with `consoleSink`. Runs one tick, mirror-node round-trip against `OfferSchema` + `TranscriptEntrySchema`, prints `H3 CHECKPOINT PASSED`.
+- `market/viewer/server.ts` — raw Node `http.createServer`. Three routes: GET /, GET /events (SSE), POST /tick. Single `currentTick` concurrency guard (409 on double-click). Boots one shared `KitchenTraderAgent` with `sseSink` bound to a `SseBroadcaster`.
+- `market/viewer/viewer.html` — vanilla HTML, inline CSS + JS, no framework, no build step. Peel brand palette (Fraunces/DM Sans/DM Mono, OKLCH cream/lime/forest). Opens `EventSource('/events')`, renders each TraderEvent variant, types `llm.token` events into a growing reasoning block with a blinking cursor.
+- `docs/superpowers/specs/2026-04-12-h3-kitchen-trader-design.md` — design doc
+- `docs/superpowers/plans/2026-04-12-h3-kitchen-trader.md` — 14-task execution plan
+- `package.json` — 2 new scripts: `h3:one-kitchen`, `h3:viewer`. **Zero new npm deps.**
+- `market/scripts/run-three-agents.ts` — minimal signature fix to keep baseline typecheck clean (passes `consoleSink` to each agent constructor). H6 rewrites this.
+
+**Verified on testnet 2026-04-12:**
+- CHECKPOINT 1 (`npm run h3:one-kitchen`): multi-sentence reasoning streamed, two HCS commits, zod round-trip passed.
+  - TRANSCRIPT: https://hashscan.io/testnet/transaction/0.0.8598874-1775951724-607874504
+  - MARKET:     https://hashscan.io/testnet/transaction/0.0.8598874-1775951725-903014789
+- CHECKPOINT 2 (`npm run h3:viewer` + curl-driven POST /tick on port 3030): 112 `llm.token` SSE frames captured (character-by-character streaming confirmed), both tool calls emitted, both HCS commits landed, `tick.end` carries the URL summary. 409 concurrency guard verified on back-to-back POST.
+  - TRANSCRIPT: https://hashscan.io/testnet/transaction/0.0.8598874-1775951871-565636300
+  - MARKET:     https://hashscan.io/testnet/transaction/0.0.8598874-1775951870-243682435
+
+**Architectural decisions locked:**
+- Option (C) "narrow custom tools, one bounded LLM invocation per tick". TS does inventory + forecast + surplus math; LLM reasons about one ingredient's policy and calls exactly two tools. Keeps Groq TPM budget at ~1.5K/invoke against the 12K/min ceiling.
+- Transparency-first design: every beat of the tick emits a `TraderEvent`. Same event stream drives terminal and browser. H7 swaps `consoleSink` for `sseSink` via the same `emit()` seam — zero retrofit.
+- Direct `TopicMessageSubmitTransaction` inside `postOffer`/`publishReasoning` instead of delegating to kit's `submit_topic_message_tool`. Avoids nested agent layers; kit tools were load-bearing in H1 but H3's decision happens one layer up.
+- `streamEvents({version: "v2"})` instead of `stream({streamMode: "messages"})`. Latter gave tool-call-only chunks with no content text; former reliably yields `on_chat_model_stream` per-token events.
+- Prompt includes explicit "think out loud first" instruction. Without it, llama-3.3-70b skips straight to tool calls and emits zero streamable content — defeating the visceral beat. With it, 2-4 sentences of reasoning paragraph stream before the first `publishReasoning` call.
+
+**EXTEND: markers planted for pass-2 extension:**
+- H4 re-binds `getInventory` as an LLM tool for mid-tick re-reads
+- H4 fills `scanMarket` to read MARKET_TOPIC history + dedupe open offers
+- H4 fills `proposeTrade` to publish PROPOSAL envelopes
+- H5 fills `acceptTrade` with atomic HTS + HBAR `TransferTransaction`
+- H6 wraps `tick()` in supervisor try/catch for cross-kitchen crash isolation
+- H6 runs three kitchens simultaneously on per-kitchen intervals
+- H7 adds trade feed + inventory grid panels, 3-kitchen color coding, historical mirror-node replay
+- full version retries Groq 429s with `@langchain/openai` gpt-4o-mini fallback
+- full version polls mirror node with exponential backoff (fixed 4s wait is fragile)
+- full version reads POS-ingested rolling daily usage instead of static table
+- demo uses uuid for offerId; full version uses HCS sequence number
+- demo serves Google Fonts from CDN; production self-hosts
+- programme's native generated-accounts.json fallback in `shared/hedera/client.ts` supersedes `env-bridge.ts` — delete this shim when that lands
+
+**Shared-layer: zero edits in H3.** H3 is fully market-local. No `shared/` changes, no programme rebase needed.
+
+### Pending (H4 and later)
+
+- [ ] **H4** — `scanMarket` + proposal flow
+- [ ] **H5** — `acceptTrade` — HTS transfer + HBAR settlement
+- [ ] **H6** — Run three agents simultaneously, guarantee ≥1 end-to-end trade
+- [ ] **H7** — `app.html` three-panel UI reads both topics via mirror node
+- [ ] **H8** — UI polish
+- [ ] **H9** — End-to-end rehearsal + insurance recording
+- [ ] **H10** — Demo script rehearsal
 
 ## Blockers
 
-None — demo is shipped.
+- **node_modules corrupted/missing.** `peel-market/node_modules` was partially wiped during this session (167 packages with only `m-z` alphabetical range). Now gone entirely. Cause unknown — possibly a collision with Terminal 2's parallel work or a Windows filesystem quirk. Unblocked by a clean `npm install`.
+- **H1 design not yet brainstormed.** Brainstorming skill gate is active for the actual h1-smoke.ts architecture. Mechanical setup is done; the code itself awaits Rex's approval of a design.
+- **Kitchen A/B/C accounts not yet provisioned.** H1 doesn't need them (uses operator only), but H2 onwards does. Programme has planned a `shared/hedera/bootstrap-accounts.ts` script (see programme/tasks/todo.md) that will create them. Coordinate before H2.
 
-## Shared-layer edits (this session)
+## Shared-layer edits (programme must rebase)
 
-- **NEW FILE** `shared/hedera/urls.ts` (commit `33624ac`) — HashScan URL helper. Additive, no collision.
-- **NEW FILE** `shared/hedera/bootstrap-accounts.ts` (commit `33624ac`) — kitchen account provisioner. Additive, no collision. Market was going to do this too (see market section below) but ran its own inline in `bootstrap-tokens.ts` — documenting the duplication, not resolving it.
-- **NEW FILE** `shared/hedera/kitchens.ts` (commit `6ca4ece`) — kitchen accounts loader. Exports `kitchenAccountIdFromFile` and `kitchenClientFromFile` — **intentionally distinct names** from `client.ts#kitchenAccountId` to avoid symbol collision with market's env-var path.
-- **NEW FILE** `shared/hedera/programme-tokens.ts` (commit `6ca4ece`) — REDUCTION_CREDIT registry loader.
-- **READ-MERGE-WRITE** `shared/hedera/generated-topics.json` — Programme's bootstrap merged `PROGRAMME_TOPIC` into the file. Market will see programme's topic ID if market's bootstrap does the same read-merge-write pattern; if market overwrites wholesale, programme's entry is lost. Not a runtime blocker because programme reads from its own `generated-programme.json`.
-- **CHERRY-PICKED from market `a0e7cef`** (commit `8349733`): `shared/hedera/client.ts`, `package.json`, `package-lock.json`, `tsconfig.json`. Programme now has market's `parsePrivateKey`, sdk 2.80, types-scoping fix. When market eventually merges these to `main`, programme's rebase is a clean no-op (same content hashes).
+- **`shared/hedera/client.ts` — MODIFIED.** Added `parsePrivateKey()` helper with DER → ECDSA → Ed25519 fallback order. `buildClient()` now calls this instead of `PrivateKey.fromString()` directly. Backward-compatible — DER-encoded keys still work as before. Programme must pick up this change or any raw-hex ECDSA keys (including Rex's operator) will fail.
+- **`package.json` — MODIFIED.** Langchain 1.x upgrade + `@hashgraph/sdk` 2.54 → 2.80 bump. Programme should rebase this. Programme's code should not break from the SDK bump (only minor API surface deltas in 2.80) but worth running `tsc --noEmit` after rebase.
+- **`package.json` — NEW SCRIPT.** Added `"h1:smoke": "tsx market/scripts/h1-smoke.ts"`. Additive only.
+- **`tsconfig.json` — MODIFIED.** Added `"types": ["node"]` to compiler options. Without this, TypeScript auto-includes every `@types/*` under `node_modules`, and the new `@elizaos/core` → React Native Metro chain (a transitive of `hedera-agent-kit`) triggers `TS2688: Cannot find type definition file for 'mapbox__point-geometry'`. With `types: ["node"]`, only `@types/node` is included implicitly; programme can still import any type it explicitly wants. Programme should inherit this; if programme's typecheck breaks for a missing implicit type, add that type to the array.
+- **NEW FILE `tasks/lessons.md`** — per CLAUDE.md convention ("create on first correction"). Holds mistake patterns observed this session: (1) invoke superpowers skills before non-trivial work, (2) mechanical unblockers are not implementation, (3) hedera-agent-kit forces exact pin alignment. Programme should rebase this file and add its own entries.
+- **`shared/types.ts` — MODIFIED (H5).** Added two optional fields to `TradeExecutedSchema`: `offerId?: string` and `proposalId?: string`. Both are `z.string().optional()` so older-shape envelopes still parse. H5's atomic-settlement flow uses these for (a) dedupe in scanMarket (skip offers that already have a TRADE_EXECUTED referencing their offerId), (b) the settle phase finding proposals that haven't already been settled. Additive + optional = zero-risk for programme, which does not consume `TradeExecutedSchema` (grep confirms: programme touches only `InvoiceIngest`, `PeriodClose`, `RankingResult`). Programme does not need to rebase anything for this edit but should pull when convenient.
+- **NEW FILE `shared/hedera/kitchen-profiles.json` (H8).** Additive. Hand-curated identity layer mapping each kitchen account id to a real London restaurant brand: Dishoom Shoreditch (A), Pret a Manger Borough High St (B), Wagamama Covent Garden (C). Each record carries `{accountId, displayName, branch, tagline, cuisine, addressLine, postcode, lat, lng, accent}`. Lat/lng are real, accents match H3's consoleSink kitchen colors (A=#A8D66B lime, B=#F4A39A coral, C=#5E8C6A forest). This file is read by the H8 map viewer for pin placement and popup composition — `market/viewer/app-server.ts` loads it alongside `generated-accounts.json`. Programme does not consume this file and does not need to rebase it; it's market-only identity sugar that happens to live under `shared/` so the two worktrees can't diverge on kitchen identity later. `kitchenName` in `shared/policy/kitchen-*.json` is unchanged — the viewer prefers `displayName` from this file.
+
+## Known context from programme terminal
+
+Read from `../peel-programme/tasks/todo.md` at 2026-04-11:
+
+- Programme plans a NEW shared file `shared/hedera/programme-tokens.ts` (REDUCTION_CREDIT registry loader). Additive — no conflict with market's edits to `client.ts`.
+- Programme plans a NEW shared file `shared/hedera/bootstrap-accounts.ts` to provision kitchen accounts from the operator. This is the source of truth for kitchen account provisioning — market should NOT duplicate this logic.
+- Programme has installed `hedera-docs` MCP (`claude mcp add --transport http hedera-docs https://docs.hedera.com/mcp`) as a replacement for context7 when querying `@hashgraph/sdk`. Market terminal should consider installing this too; context7 works for hedera-agent-kit and langchain but hedera-docs MCP is authoritative for the raw SDK.
+- Programme fixed an `n<4` degenerate case in `regulator.computeRanking`: `Math.max(1, Math.floor(n * 0.25))` instead of `Math.floor(n * 0.25)`. This is a local programme change, no shared impact.
 
 ## Review
 
-**Session 1 — 6 commits landed.** Tasks 1–5 complete. Pure-math offline cycle validated (Task 1). Kitchen accounts + PROGRAMME_TOPIC + REDUCTION_CREDIT provisioned on testnet (Tasks 2 + 4). Registry loaders + publish/mirror helpers written (Tasks 3 + 5). No failed testnet transactions. Typecheck green. Spec + quality reviews passed (Tasks 1, 2). Tasks 3–5 reviewed lightly to preserve context budget. Tasks 6–9 deferred to session 2 with the handoff above.
+_(Fill after H1 ships.)_
 
-**Session 2 — 4 commits landed, demo complete.** Tasks 6–9 shipped as `4fc54e9`, `e5d081b`, `6bdf3db`, `9b9bac3`. Kitchen constructor takes a per-kitchen Client; `ingestInvoice` publishes `INVOICE_INGEST` envelopes and `publishPeriodClose` one-lines into the publish helper. Regulator constructor takes operator Client; `fetchAllPeriodCloses` delegates to mirror helper with bounded poll; `mintCreditsToTopQuartile` does two-step mint-to-treasury then raw `TransferTransaction` distribution; `publishRankingResult` one-lines into the publish helper. `run-period-close.ts` rewritten to drive the full cycle with per-kitchen clients. Subagent review loop skipped per Rex direction (plan has verbatim code).
+## Overnight session report (2026-04-12 UTC)
 
-**Open design decision resolved: Option A.** Shipped with programme's isolated kitchens (`0.0.8598914-16`) and programme's own `PROGRAMME_TOPIC=0.0.8598980`. Market's kitchens (`0.0.8598874/77/79`) and market's `PROGRAMME_TOPIC=0.0.8598889` remain narratively separate. Rationale: no cross-worktree file copy (lesson #1 risk); PRD's "shared primitive" pitch is about RAW_* tokens which `ingestInvoice` doesn't touch (EXTEND:-deferred), so shared-kitchens story is cosmetic for this pass.
+Session window: 2026-04-12 01:50–03:40 UTC approx. Branch: `market`.
+Entered at HEAD 7bfa6e3 (H5 acceptTrade code-complete, testnet-deferred).
+Exited at HEAD d5acd63 (H8 map viewer, all four commits). Five feature
+commits landed; one state-repair npm install (no package.json edit).
 
-**Live end-to-end run on testnet (2026-04-11, periodEnd `2026-04-11`):** 13 HashScan URLs produced, mirror returned 3/3 closes (no degraded mode), KITCHEN_A sole winner with 0.93 REDUCTION_CREDIT (cutoff 12.9% vs A's 9.2%).
+### H8 map viewer — SHIPPED ✓
 
-- INVOICE_INGEST (7):
-  - A RICE 22kg: `0.0.8598914-1775949919-825055397`
-  - A OIL 3kg:  `0.0.8598914-1775949920-197657265`
-  - B PASTA 25kg: `0.0.8598915-1775949923-838479124`
-  - B FLOUR 3kg: `0.0.8598915-1775949925-217669217`
-  - B OIL 3kg:   `0.0.8598915-1775949925-420060210`
-  - C OIL 5kg:   `0.0.8598916-1775949927-417936140`
-  - C FLOUR 30kg: `0.0.8598916-1775949929-142896714`
-- PERIOD_CLOSE (3):
-  - A (25kg/22.7kg/2.3kg/9.2%): `0.0.8598914-1775949930-165013646`
-  - B (31kg/27.0kg/4.0kg/12.9%): `0.0.8598915-1775949933-373961698`
-  - C (35kg/22.6kg/12.4kg/35.4%): `0.0.8598916-1775949934-448322065`
-- Mint (REDUCTION_CREDIT 0 → 93 minor units): `0.0.8583839-1775949940-938088038`
-- Transfer (operator treasury → KITCHEN_A, 93 minor units): `0.0.8583839-1775949940-798730524`
-- RANKING_RESULT: `0.0.8583839-1775949945-902379313`
+All four commits merged to `market`:
 
-**EXTEND: markers surviving into pass-2** (concrete backlog):
+  39d6416  H8 C1 — kitchen-profiles.json (Dishoom / Pret Borough / Wagamama Covent Garden)
+  d4573e4  H8 C2 — static mockup (app-mockup.html)
+  739099b  H8 C3 — app-server.ts /state privacy split + /panels fallback + MAPBOX_TOKEN injection
+  d5acd63  H8 C4 — app.html wired to /state poll, topbar + drawer + popup refresh
 
-- `kitchen.ts#ingestInvoice`: also mint `RAW_{ingredient}` HTS tokens to kitchen treasury via `HederaBuilder.mintFungibleToken` once market's H2 populates `generated-tokens.json`. Bookkeeping detail; doesn't affect period-close math (POS-derived).
-- `regulator.ts#mintCreditsToTopQuartile`: handle tie-breaks on equal waste rates; atomic mint+transfer via scheduled tx so the whole distribution appears as one HashScan entry.
-- `mirror.ts#fetchPeriodCloses`: pagination beyond first page (100 messages), consensus-watermark correctness, auth, gzip transport, server-side filter by message kind.
-- `publish.ts#publishToProgrammeTopic`: per-message signing keys, retry-on-BUSY, envelope deduplication by content hash.
-- `regulator.ts#computeRanking`: formal tie-breaking on the cutoff, continuous interpolation for non-integer percentiles, auditor-observable cutoff derivation.
-- `run-period-close.ts`: real invoices via OCR/POS webhooks, per-ingredient mass balance, anti-gaming checks on POS spikes, multi-period continuous operation.
+Open the viewer:
+  `APP_PORT=3001 npm run h7:app`
+  → http://localhost:3001/          (live London map, hero view)
+  → http://localhost:3001/panels    (H7 three-panel debug view)
+  → http://localhost:3001/state     (public JSON, privacy-clean)
+  → http://localhost:3001/state/debug  (full JSON with inventory, for /panels)
 
----
+What Rex should see on the map viewer:
+  - Peel wordmark + "LIVE · THREE AGENTS · TESTNET" kicker on a cream paper topbar
+  - "N trades settled today · updated HH:MM:SS UTC" live meta on the right
+  - Mapbox light-v11 London map with three rounded-pill pins at the real
+    restaurant locations (Shoreditch / Borough High St / Covent Garden)
+  - Click any pin to open a popup card with:
+      · accent-striped header (Fraunces name + branch/postcode + tagline)
+      · Open offers (max 3 rows, each with a HashScan chip, "+N more" overflow)
+      · Trade network SVG (this kitchen as filled center, other two as
+        outlined satellites, edges labeled with aggregate flow + HS chip,
+        dim-dashed edges for lanes with no trades yet)
+      · Recent settlements (max 3 rows, newest first, with HS chips)
+  - Bottom drawer: global reasoning tape across all three kitchens,
+    color-coded by accent, Fraunces-serif thoughts, mono timestamps
 
-## From market terminal (append-only, 2026-04-11)
+Known rough edges:
+  - "Open offers" shows the N most recent OFFER envelopes from the kitchen
+    regardless of settlement status. A true "open" filter needs the server
+    to surface offerId on OFFER rows so settled ones can be stripped.
+    EXTEND marker in market/viewer/app.html (C4 inline comment).
+  - Favicon 404 in browser DevTools. Harmless.
+  - There is no live websocket — polling is 3s. On a slow link you'll see
+    a ~3s delay between a trade landing and the popup auto-refreshing.
 
-Additive notes from the `peel-market` worktree. Do not edit above this line; that's programme's section. Append further notes below.
+Privacy constraint verified: /state returns no `inventory` key; /state/debug
+does. The map viewer never queries /state/debug. /panels queries only /state/debug.
 
-### Rebase-impacting changes on main-shared layer
+### Priority 2 — H5 testnet verification — BLOCKED (Groq TPD)
 
-- **`shared/hedera/client.ts` MODIFIED.** Market added `parsePrivateKey()` helper with DER → ECDSA → Ed25519 fallback. The existing `PrivateKey.fromString()` call silently failed on Rex's raw-hex ECDSA operator key (portal-issued format). `kitchenClient()` is unchanged in behavior — still pulls from env vars — but now tolerates any of the three key formats. This is forward-compatible with programme's planned env-to-file fallback in `bootstrap-accounts.ts`. No conflict if programme layers its changes on top.
-- **`package.json` MODIFIED.** `hedera-agent-kit@3.8.2` bundles `langchain@1.2.24` + `@langchain/core@1.1.24` internally. Staying on the scaffold's 0.3 line caused dual-installs that broke tool `instanceof` checks. Bumped to: `langchain ^1.3.0`, `@langchain/core ^1.1.24`, `@langchain/langgraph ^1.2.0`, `@langchain/openai ^1.4.0`, `@langchain/groq ^1.2.0` (new), `@hashgraph/sdk ^2.80.0` (from 2.54, matching hedera-agent-kit's internal), `zod ^3.25.0`. Programme doesn't use langchain so most bumps are no-ops, but the `@hashgraph/sdk` 2.54 → 2.80 bump touches programme's SDK imports. Run `npm run typecheck` after rebase; minor 2.80 API deltas may affect `regulator.ts` / `kitchen.ts`.
-- **`package.json` NEW SCRIPT.** Added `"h1:smoke": "tsx market/scripts/h1-smoke.ts"`. Additive only.
-- **`tsconfig.json` MODIFIED.** Market added `"types": ["node"]` to compiler options. TypeScript was implicitly including transitive `@types/*` from hedera-agent-kit's React Native dep chain, causing `TS2688: Cannot find type definition file for 'mapbox__point-geometry'`. Scoping to `["node"]` fixes the market build. Programme probably wants the same fix when it picks up hedera-agent-kit as a peer dep; if programme explicitly needs another type library, add it to the array (it's now opt-in not auto-discovered).
+Status: NOT verified. Partial progress captured below.
 
-### State as of market session pause
+**Code review completed.** Read through:
+  - market/agents/keys.ts           (clean — DER detection, ECDSA fallback)
+  - market/agents/tools.ts acceptTrade body lines 517–747 (clean — dual
+    signing order, base-unit math, idempotency via settled{Offer,Proposal}Ids,
+    atomic TransferTransaction, TRADE_EXECUTED commit with both offerId +
+    proposalId)
+  - market/agents/tools.ts findMatchedProposalsForKitchen lines 942–976
+    (clean — filters by toKitchen + offer authorship + expiry + settlement)
+  - market/agents/kitchen-trader.ts runSettlePhase lines 582–785 (clean —
+    LLM tool wiring, error-isolated via return-false, hashscan URL harvest
+    from tool-end events)
 
-- H1 gate (hedera-agent-kit toolchain verification) **not yet passed.** Mechanical setup done; h1-smoke.ts design is being brainstormed. Commits 4+ on programme's list remain blocked on H2 bootstrap, which is blocked on H1.
-- `shared/hedera/generated-tokens.json` and `generated-topics.json` **do NOT exist yet.** H2 will create them.
-- Market's `.env` is populated with the same operator creds programme is using. No cross-worktree env coordination needed.
-- `peel-market/node_modules` was in a corrupted state this session (partial wipe, a-l packages missing). About to do a clean reinstall. If programme's own `node_modules` shows similar symptoms (missing a-l range), suspect the same root cause — likely a Windows filesystem or cross-worktree interaction issue.
+Two minor nits found, not worth fixing:
+  (1) Buyer HBAR preflight adds +1_000_000 tinybar "fees headroom", but
+      TransferTransaction fees are paid by the operator (seller), not the
+      buyer. The check is over-conservative but harmless at 10 HBAR seed
+      funding. Leave it.
+  (2) `await new TransferTransaction()...freezeWith(ctx.client)` — the
+      await on a synchronous method is unnecessary. Harmless.
 
-### Tooling notes
+**State-repair before run:** `npm install` restored ~66 missing transitive
+packages (including @cfworker/json-schema, a direct dep of @langchain/core
+that wasn't present). This is the same partial-wipe failure mode the prior
+session hit (see Blockers section above). Root cause remains unknown — this
+worktree's node_modules degrades between sessions. Didn't touch package.json
+or package-lock.json. No commit — node_modules is gitignored.
 
-- Market's context7 queries to `/hashgraph/hedera-docs` returned the full hedera-agent-kit v3 tool reference (`hedera-account-create`, `hcs-create-topic`, `hcs-submit-message`, `hts-create-fungible-token`, `hts-transfer-tokens`). Programme's `hedera-docs` MCP is probably a cleaner source for raw SDK reference; context7 is fine for the kit + langchain.
+**Run attempt:** `npm run h5:trade` at 03:32 UTC.
 
-### Confirmed non-conflicts with programme's planned work
+What worked on testnet before the 429:
+  - Kitchen A tick 1 post-offer phase → published a new OFFER envelope
+    Offer:      https://hashscan.io/testnet/transaction/0.0.8598874-1775961135-645644551
+    Reasoning:  https://hashscan.io/testnet/transaction/0.0.8598874-1775961133-701865665
+  - Kitchen A tick 1 scan phase → drafted and published a PROPOSAL
+    counter-bidding on a peer's open offer (off_c2fda0cf) at 0.75 HBAR/kg
+    PROPOSAL prop_d5735e70:
+    https://hashscan.io/testnet/transaction/0.0.8598874-1775961140-327067761
+  - Kitchen A tick 1 settle phase → findMatchedProposalsForKitchen
+    successfully matched an existing proposal (prop_eadf730d) from
+    0.0.8598877 for 20.0 kg RICE @ 0.810 HBAR/kg, and the LLM invocation
+    began (log: "◆ reasoning · llama-3.3-70b-versatile").
 
-- Programme's `shared/hedera/programme-tokens.ts` (NEW) — additive, no collision.
-- Programme's `shared/hedera/bootstrap-accounts.ts` (NEW) — additive, no collision. Market is happy for programme to own kitchen account provisioning; market will read from `generated-accounts.json` when H2 runs.
-- Programme's `n<4` cutoff fix in `regulator.computeRanking` — programme-local, no shared impact.
+Failure:
+  - The scan-phase LLM call 429'd:
+    "Rate limit reached for model `llama-3.3-70b-versatile` ... on tokens
+     per day (TPD): Limit 100000, Used 99732, Requested 1651. Please try
+     again in 19m54.912s."
+  - The settle-phase LLM call 429'd:
+    "Used 99608, Requested 1164. Try again in 11m7s."
+  - Kitchen B tick 2 also 429'd on its first LLM call.
+  - Script crashed with an unhandled GraphRecursionError wrapping the 429.
 
-### H1 + H2 complete on `market` branch (2026-04-11 evening)
+**Critical finding about Groq TPD behavior:** the briefing assumed TPD
+resets "at UTC midnight". That is incorrect for the `on_demand` free tier
+on llama-3.3-70b-versatile. Observed behavior: the retry-after header is
+a rolling countdown (`retry-after: 551` seconds ≈ 9 minutes from the last
+error; earlier errors showed 19 minutes). Groq tracks token usage over a
+rolling 24-hour window, not a calendar day. So the quota never "reset at
+midnight UTC" — it had been ratcheting down as old usage aged out of the
+window. The window should naturally open up in the morning without me
+doing anything, but there is no single "reset moment".
 
-**H1 (toolchain gate)** — committed as `a0e7cef`. hedera-agent-kit v3 + langchain v1 + Groq proven to publish HCS messages and execute HTS transfers end-to-end on testnet via LLM tool calls. Programme doesn't consume this directly; it's a precondition for H3+ market work.
+**No H5 code change made.** H5 remains code-complete, testnet-unverified.
+The acceptTrade body has NEVER been exercised against real Hedera testnet
+state. When Rex has LLM tokens available, re-run is just `npm run h5:trade`.
 
-Additional shared-layer edit beyond what market flagged earlier:
-- `shared/hedera/client.ts` `parsePrivateKey()` was **rewritten** during H1 implementation. The first DER-first fallback chain silently parsed raw ECDSA hex as Ed25519 (because `fromStringDer` accepts raw hex with only a stderr warning — not an exception). The new version respects an explicit `*_KEY_TYPE` env hint and detects DER by `302` prefix. **Programme's `.env` should set `HEDERA_OPERATOR_KEY_TYPE=ECDSA` explicitly** — relying on auto-detection picks the wrong parser and every tx fails with `INVALID_SIGNATURE`.
-- `package.json` gained an npm `"overrides"` block forcing `@langchain/core=1.1.39`, `@hashgraph/sdk=2.80.0`, `@langchain/openai=1.2.7` everywhere. Programme doesn't use the langchain packages, but the `@hashgraph/sdk` pin is worth being aware of during rebase.
+### Priority 3 — H6 three-kitchen integration — SKIPPED (blocked by same)
 
-**H2 (bootstrap)** — committed on `market` branch (next commit after `a0e7cef`). **This unblocks programme's commits 4+.**
+H6 requires three kitchens each running multiple ticks, which multiplies
+the Groq token spend. Attempting it now would only pile more 429s on top.
+Deferred entirely. Re-run in the morning is:
+  `MAX_CYCLES=3 MARKET_TICK_MS=30000 npm run h6:three-kitchen`
 
-`market/scripts/bootstrap-tokens.ts` ran on testnet and created:
-- 3 kitchen accounts `A=0.0.8598874`, `B=0.0.8598877`, `C=0.0.8598879` — ECDSA, 10 HBAR each, unlimited auto-association.
-- 4 RAW_* tokens `RICE=0.0.8598881`, `PASTA=0.0.8598883`, `FLOUR=0.0.8598884`, `OIL=0.0.8598885` — 3 decimals, 1000 kg initial supply, operator as treasury, operator as supply key (so programme's `kitchen.ingestInvoice` can mint more).
-- 3 HCS topics `MARKET_TOPIC=0.0.8598886`, `TRANSCRIPT_TOPIC=0.0.8598887`, `PROGRAMME_TOPIC=0.0.8598889`.
-- Seed balances per PRD-2 §MVP scope: A=50R/2P, B=2R/50P, C=20R/20P/20F/50O (kg).
+### Outstanding work for Rex in the morning
 
-**Where to read these IDs from programme:**
-- Canonical files live at `C:/Users/Rex/Desktop/Work/Projects/peel-market/shared/hedera/generated-{accounts,tokens,topics}.json` (gitignored, private keys in `accounts.json`).
-- Programme options: (a) `cp` the three files into `peel-programme/shared/hedera/`, (b) import with a relative path `../peel-market/shared/hedera/generated-tokens.json`, (c) extend `shared/hedera/client.ts`'s `kitchenClient()` with a fallback that reads `generated-accounts.json` when env vars are absent (the `.env` comment in peel-programme/.env already anticipates this pattern).
-- Market did NOT auto-duplicate files into `peel-programme/shared/hedera/` — cross-worktree writes felt out-of-scope without explicit approval. Shout if you'd prefer market to auto-mirror on future reruns.
+1. **Wait for Groq rolling window to open** — check current headroom with
+   a single `npm run h3:one-kitchen` which consumes ~1.5K tokens. If that
+   succeeds, there's enough budget for h5:trade (~6K tokens).
+2. **Run `npm run h5:trade`** (no code changes needed) and capture the
+   TRADE_EXECUTED HashScan URL from the terminal banner. That is the
+   first actual H5 proof point.
+3. **Run `MAX_CYCLES=3 MARKET_TICK_MS=30000 npm run h6:three-kitchen`**
+   and capture any TRADE_EXECUTED envelopes that land during the 3-minute
+   window.
+4. **Optional but nice:** boot `npm run h7:app` and open `/` in a browser
+   while H6 runs — the map viewer's popup card should auto-refresh to
+   show the newly-landed trades in real time (3s polling). This is the
+   visceral demo-ready beat.
+5. **Investigate the node_modules partial-wipe root cause.** Twice in two
+   sessions now, a clean-looking install has silently lost a chunk of
+   transitive packages between sessions. Candidate causes: Windows file-
+   system shenanigans, parallel Terminal 2 operations, antivirus, pnpm
+   symlink confusion. This is not a blocker — `npm install` recovers —
+   but it's worth rooting out before the demo.
 
-**Kitchen account provisioning — programme's `bootstrap-accounts.ts` commit is now likely unnecessary.** Market created the 3 kitchens inline in `bootstrap-tokens.ts` since they were needed for the H2 seed transfers. Options:
-1. Factor the account-creation loop out of `bootstrap-tokens.ts` into `shared/hedera/bootstrap-accounts.ts` (a pure refactor, no behavior change) — market is happy to reviewer-approve this.
-2. Drop the planned commit and treat `bootstrap-tokens.ts` as the canonical provisioner.
+### Tokens consumed (rough)
 
-**REDUCTION_CREDIT token (programme-owned)** — still on your list (commit 3). Market did NOT create this. Your `programme/scripts/bootstrap-programme.ts` should still run after H2 to add the token to `shared/hedera/programme-tokens.ts` / `generated-programme-tokens.json` per your original plan.
+Groq:   ~99.7K TPD budget used by end of session (at quota ceiling).
+        Of that, this session likely added ~2–4K on tick 1 (post-offer)
+        before hitting 429; the bulk (~95K) was already in the 24h window
+        from earlier today's H3/H4 verification runs.
 
-**REDUCTION_CREDIT supply key choice** — unresolved. Programme owns this decision. Worth flagging because H2 used the operator as supply key for RAW_* tokens; if REDUCTION_CREDIT should use a programme-specific key for separation-of-concerns, note it when you create it.
-
+HBAR:   Kitchen A submitted 3 successful tx's during the tick 1 partial
+        run (OFFER, REASONING, PROPOSAL envelopes). At ~50k tinybars
+        each, that's ~0.0015 HBAR spent. Well within the 10 HBAR seed.
+        No TRADE_EXECUTED ran — no transfer fees charged.

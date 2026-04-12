@@ -39,6 +39,11 @@ export type Proposal = z.infer<typeof ProposalSchema>;
 export const TradeExecutedSchema = z.object({
   kind: z.literal("TRADE_EXECUTED"),
   tradeId: z.string(),
+  // H5: offerId and proposalId are optional so older-shape envelopes (if any)
+  // still parse. New settlements always include both so scanMarket can
+  // dedupe open offers against their settlements.
+  offerId: z.string().optional(),
+  proposalId: z.string().optional(),
   seller: z.string(),
   buyer: z.string(),
   ingredient: z.enum(["RICE", "PASTA", "FLOUR", "OIL"]),
