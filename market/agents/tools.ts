@@ -1,24 +1,19 @@
 /**
  * Tools exposed to the Kitchen Trader Agent LLM.
  *
- * H3 implements 4 of the 7 tools named in PRD-2-Market.md §"Tools exposed
- * to the LLM":
+ * Tools exposed to the Kitchen Trader Agent LLM (7 total):
  *
  *   getInventory        — mirror-node read of the kitchen's RAW_* balances
- *                         (in kg, after dividing by 10^3 decimals)
- *   getUsageForecast    — static daily-usage table × days-left-in-period
- *   postOffer           — validates policy bounds, builds OFFER envelope,
- *                         submits to MARKET_TOPIC via direct SDK
- *   publishReasoning    — builds TranscriptEntry, submits to TRANSCRIPT_TOPIC
+ *   getUsageForecast    — static daily-usage table x days-left-in-period
+ *   postOffer           — validates policy bounds, publishes OFFER to MARKET_TOPIC
+ *   publishReasoning    — publishes TranscriptEntry to TRANSCRIPT_TOPIC
+ *   scanMarket          — reads MARKET_TOPIC for open peer offers
+ *   proposeTrade        — publishes a PROPOSAL counter-offer to MARKET_TOPIC
+ *   acceptTrade         — settles a PROPOSAL via atomic HTS+HBAR transfer
  *
- * The other three (scanMarket, proposeTrade, acceptTrade) remain TODO stubs
- * for H4/H5.
- *
- * Two of the implemented tools — publishReasoning and postOffer — are bound
- * as LangChain tools in kitchen-trader.ts. The other two (getInventory and
- * getUsageForecast) are called by TypeScript BEFORE the LLM invocation, not
- * exposed to the LLM, because the tick already has the data before the LLM
- * reasons about it.
+ * publishReasoning and postOffer are bound as LangChain tools in
+ * kitchen-trader.ts. getInventory and getUsageForecast are called by
+ * TypeScript BEFORE the LLM invocation.
  *
  * EXTEND: H4 re-binds getInventory as an LLM tool when the agent needs to
  *         re-read post-trade within one tick.

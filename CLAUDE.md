@@ -105,19 +105,15 @@ aaFood Waste Solver/
 │
 ├── market/                     branch `market` — PRD-2 primary build
 │   ├── README.md               build-order table, H1 gate
-│   ├── agents/{kitchen-trader,tools}.ts
+│   ├── agents/{kitchen-trader,tools,events,keys,prompt,hashscan,env-bridge}.ts
 │   ├── scripts/{bootstrap-tokens,run-three-agents}.ts
-│   └── app.html                three-panel live viewer
+│   └── viewer/{app-server,server,app,app-panels,viewer}.{ts,html}
 │
-├── programme/                  branch `programme` — PRD-1 stub
-│   ├── README.md               scope note
-│   ├── agents/{kitchen,regulator}.ts   math IMPLEMENTED, HCS wiring TODO
-│   ├── recipes.json            10 dishes
-│   └── scripts/run-period-close.ts
-│
-└── tasks/
-    ├── todo.md                 per-worktree session log
-    └── lessons.md              mistake patterns (create on first correction)
+└── programme/                  branch `programme` — PRD-1 stub
+    ├── README.md               scope note
+    ├── agents/{kitchen,regulator}.ts   math IMPLEMENTED, HCS wiring TODO
+    ├── recipes.json            10 dishes
+    └── scripts/run-period-close.ts
 ```
 
 ## Brand anchors (for anything visual)

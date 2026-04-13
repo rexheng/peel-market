@@ -1,19 +1,15 @@
 /**
  * TraderEvent — the shared vocabulary for everything that happens inside a
  * kitchen's tick. Every beat of the tick emits one of these variants through
- * an EmitFn. Two sinks ship in H3:
+ * an EmitFn.
  *
- *   consoleSink(kitchenId)     — ANSI-colored terminal printer for the headless
- *                                runner. `llm.token` events write without
- *                                newlines so reasoning streams in-place.
- *   sseSink(broadcaster)       — Pushes events to all connected browser clients
- *                                via the SseBroadcaster owned by viewer/server.ts.
+ * consoleSink(kitchenId) is the primary sink: ANSI-colored terminal printer
+ * for the headless runner. `llm.token` events write without newlines so
+ * reasoning streams in-place.
  *
- * Both conform to EmitFn. Tool bodies and tick() never branch on which sink
- * is attached — they just call ctx.emit(event).
+ * Tool bodies and tick() never branch on which sink is attached — they just
+ * call ctx.emit(event).
  */
-
-import type { ServerResponse } from "node:http";
 import type { RawIngredient } from "@shared/hedera/tokens.js";
 import type { Proposal, TradeExecuted } from "@shared/types.js";
 
@@ -161,47 +157,6 @@ export type TraderEvent =
     };
 
 export type EmitFn = (event: TraderEvent) => void;
-
-/* ------------------------------------------------------------------ */
-/*  SseBroadcaster — owned by viewer/server.ts                        */
-/* ------------------------------------------------------------------ */
-
-export interface SseBroadcaster {
-  push(event: TraderEvent): void;
-  attach(res: ServerResponse): void;
-  detach(res: ServerResponse): void;
-  readonly clientCount: number;
-}
-
-export function createSseBroadcaster(): SseBroadcaster {
-  const clients = new Set<ServerResponse>();
-  return {
-    push(event) {
-      const frame = `data: ${JSON.stringify(event)}\n\n`;
-      for (const res of clients) {
-        // best-effort write; if the client disconnected mid-write, ignore
-        try {
-          res.write(frame);
-        } catch {
-          /* no-op */
-        }
-      }
-    },
-    attach(res) {
-      clients.add(res);
-    },
-    detach(res) {
-      clients.delete(res);
-    },
-    get clientCount() {
-      return clients.size;
-    },
-  };
-}
-
-export function sseSink(broadcaster: SseBroadcaster): EmitFn {
-  return (event) => broadcaster.push(event);
-}
 
 /* ------------------------------------------------------------------ */
 /*  consoleSink — colorized terminal printer                           */

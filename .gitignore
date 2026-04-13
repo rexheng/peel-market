@@ -9,6 +9,8 @@ dist/
 coverage/
 .cache/
 *.tsbuildinfo
+.playwright-mcp/
+tasks/
 
 # Local Hedera state (keys, cached token IDs after bootstrap)
 shared/hedera/generated-*.json
