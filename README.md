@@ -449,18 +449,6 @@ The current demo uses Hedera native services directly. Planned ecosystem integra
 | **Privacy-clean /state endpoint** | Public viewer sees only HCS envelopes, never inventory or balances | Kitchen inventory is commercially sensitive; the public surface shows only what kitchens chose to publish on-chain |
 | **Zod shared contract** | All HCS message types defined as Zod schemas in `shared/types.ts` | Runtime validation + TypeScript types in lockstep; both workstreams share the same contract |
 
-## Why This Wins the Agentic Society Theme
-
-The hackathon brief calls out *"an agent-to-agent marketplace where AI agents negotiate and settle trades."* Peel is that — literally:
-
-- **Autonomous agents** — each kitchen has its own LLM agent operating under owner-defined policy constraints
-- **Peer-to-peer negotiation** — agents discover each other through HCS, not through a central matchmaker
-- **On-chain settlement** — every trade is an HTS token transfer + HBAR payment, verifiable on HashScan
-- **Visible reasoning** — every agent thought is published to HCS in real-time; nothing is a black box
-- **Real economic agents** — not a chatbot with buttons, but AI agents making autonomous economic decisions within bounded policy spaces
-
-Two restaurants, two AI agents, they talk, they settle, live on testnet, in 60 seconds. Judges can replay any trade from mirror node history. Nothing is staged.
-
 ## Go-to-Market Strategy
 
 **Phase 1 — Prove it works (Month 1–3)**
